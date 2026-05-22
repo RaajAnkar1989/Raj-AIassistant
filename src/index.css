@@ -1,0 +1,669 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #050810;
+  color: #e0f2fe;
+}
+
+/* ——— Jarvis UI (video-inspired) ——— */
+
+.jarvis-root {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, #0c1929 0%, #050810 55%, #020408 100%);
+}
+
+.jarvis-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 20%, transparent 75%);
+  pointer-events: none;
+}
+
+.jarvis-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.jarvis-glow--top {
+  width: 400px;
+  height: 300px;
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(14, 165, 233, 0.15);
+}
+
+.jarvis-glow--bottom {
+  width: 500px;
+  height: 200px;
+  bottom: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.jarvis-settings-btn {
+  position: absolute !important;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 10;
+  color: rgba(148, 163, 184, 0.7) !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(34, 211, 238, 0.15) !important;
+  backdrop-filter: blur(8px);
+}
+
+.jarvis-settings-btn:hover {
+  color: #22d3ee !important;
+  border-color: rgba(34, 211, 238, 0.4) !important;
+}
+
+.jarvis-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 520px;
+  padding: 24px 20px;
+  z-index: 1;
+}
+
+.jarvis-brand {
+  font-size: clamp(2.5rem, 10vw, 3.5rem) !important;
+  font-weight: 200 !important;
+  letter-spacing: 0.45em !important;
+  margin-right: -0.45em;
+  color: #f0f9ff !important;
+  text-shadow: 0 0 40px rgba(34, 211, 238, 0.5);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.jarvis-tagline {
+  font-size: 0.7rem !important;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(34, 211, 238, 0.55) !important;
+  margin-top: 8px !important;
+  margin-bottom: 32px !important;
+}
+
+.jarvis-orb-container {
+  position: relative;
+  width: min(280px, 72vw);
+  height: min(280px, 72vw);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+.jarvis-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  opacity: 0.5;
+}
+
+.jarvis-ring--1 {
+  inset: 0;
+}
+
+.jarvis-ring--2 {
+  inset: 12%;
+}
+
+.jarvis-ring--3 {
+  inset: 24%;
+}
+
+.jarvis-ring.is-active {
+  animation: jarvis-ring-pulse 2.5s ease-in-out infinite;
+}
+
+.jarvis-ring--2.is-active {
+  animation-delay: 0.4s;
+}
+
+.jarvis-ring--3.is-active {
+  animation-delay: 0.8s;
+}
+
+@keyframes jarvis-ring-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.35;
+    border-color: rgba(34, 211, 238, 0.25);
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.85;
+    border-color: rgba(34, 211, 238, 0.55);
+    box-shadow: 0 0 30px rgba(34, 211, 238, 0.2);
+  }
+}
+
+.jarvis-core {
+  position: relative;
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #1e3a5f, #0c1929 60%, #050810);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  box-shadow:
+    0 0 30px rgba(14, 165, 233, 0.25),
+    inset 0 0 40px rgba(34, 211, 238, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+}
+
+.jarvis-core--connecting {
+  animation: jarvis-core-breathe 1.2s ease-in-out infinite;
+}
+
+.jarvis-core--listening {
+  border-color: rgba(34, 211, 238, 0.7);
+  box-shadow:
+    0 0 50px rgba(34, 211, 238, 0.35),
+    inset 0 0 30px rgba(34, 211, 238, 0.12);
+}
+
+.jarvis-core--speaking {
+  border-color: rgba(125, 211, 252, 0.8);
+  box-shadow:
+    0 0 60px rgba(56, 189, 248, 0.45),
+    inset 0 0 40px rgba(125, 211, 252, 0.15);
+}
+
+@keyframes jarvis-core-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
+.jarvis-visualizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+}
+
+.jarvis-bar {
+  width: 4px;
+  height: 28px;
+  border-radius: 2px;
+  background: linear-gradient(to top, #0369a1, #22d3ee);
+  transform-origin: center bottom;
+  transition: transform 0.1s ease;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.5);
+}
+
+.jarvis-status {
+  font-size: 0.75rem !important;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.6) !important;
+  transition: color 0.3s ease;
+}
+
+.jarvis-status--live {
+  color: #22d3ee !important;
+  text-shadow: 0 0 20px rgba(34, 211, 238, 0.4);
+}
+
+.jarvis-transcript {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 400px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: rgba(8, 14, 28, 0.75);
+  border: 1px solid rgba(34, 211, 238, 0.12);
+  backdrop-filter: blur(12px);
+  text-align: center;
+}
+
+.jarvis-transcript-user {
+  font-size: 0.8rem !important;
+  color: rgba(148, 163, 184, 0.8) !important;
+  margin-bottom: 8px !important;
+}
+
+.jarvis-transcript-agent {
+  font-size: 0.95rem !important;
+  color: #a5f3fc !important;
+  line-height: 1.5 !important;
+  font-weight: 300;
+}
+
+.jarvis-controls {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+  z-index: 1;
+}
+
+.jarvis-talk-btn {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  position: relative;
+}
+
+.jarvis-talk-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.jarvis-talk-btn-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  color: #f0f9ff;
+  background: linear-gradient(145deg, #0ea5e9 0%, #0369a1 50%, #0c4a6e 100%);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.3),
+    0 8px 32px rgba(14, 165, 233, 0.45),
+    0 0 60px rgba(34, 211, 238, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.jarvis-talk-btn:hover:not(:disabled) .jarvis-talk-btn-inner {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.5),
+    0 12px 40px rgba(14, 165, 233, 0.55),
+    0 0 80px rgba(34, 211, 238, 0.35);
+}
+
+.jarvis-talk-btn--active .jarvis-talk-btn-inner {
+  background: linear-gradient(145deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%);
+  box-shadow:
+    0 0 0 1px rgba(248, 113, 113, 0.4),
+    0 8px 32px rgba(220, 38, 38, 0.4);
+}
+
+.jarvis-hint {
+  margin-top: 14px !important;
+  font-size: 0.65rem !important;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(100, 116, 139, 0.7) !important;
+}
+
+.jarvis-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: jarvis-spin 0.8s linear infinite;
+}
+
+@keyframes jarvis-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ——— Jarvis HUD side panels ——— */
+
+.jarvis-hud {
+  position: absolute;
+  top: max(72px, env(safe-area-inset-top));
+  bottom: max(128px, env(safe-area-inset-bottom));
+  width: min(210px, 21vw);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.jarvis-hud--left {
+  left: max(14px, env(safe-area-inset-left));
+}
+
+.jarvis-hud--right {
+  right: max(14px, env(safe-area-inset-right));
+}
+
+.jarvis-hud-panel {
+  background: rgba(8, 14, 28, 0.72);
+  border: 1px solid rgba(34, 211, 238, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.jarvis-hud-title {
+  font-size: 0.55rem !important;
+  letter-spacing: 0.35em !important;
+  text-transform: uppercase;
+  color: rgba(34, 211, 238, 0.55) !important;
+  margin-bottom: 10px !important;
+  font-weight: 500 !important;
+}
+
+.jarvis-hud-stat {
+  margin-bottom: 10px;
+}
+
+.jarvis-hud-stat:last-child {
+  margin-bottom: 0;
+}
+
+.jarvis-hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.jarvis-hud-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.jarvis-hud-value {
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 0.72rem;
+  color: #a5f3fc;
+  letter-spacing: 0.04em;
+}
+
+.jarvis-hud-detail {
+  font-size: 0.62rem !important;
+  color: rgba(100, 116, 139, 0.9) !important;
+  margin-top: 4px !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.04em;
+}
+
+.jarvis-hud-bar {
+  height: 3px;
+  margin-top: 5px;
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.jarvis-hud-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.45s ease;
+}
+
+.jarvis-hud-bar-fill--cyan {
+  background: linear-gradient(90deg, #0369a1, #22d3ee);
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.45);
+}
+
+.jarvis-hud-bar-fill--good {
+  background: linear-gradient(90deg, #047857, #34d399);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.35);
+}
+
+.jarvis-hud-bar-fill--warn {
+  background: linear-gradient(90deg, #b45309, #fbbf24);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.35);
+}
+
+.jarvis-hud-app,
+.jarvis-hud-tip {
+  font-size: 0.64rem !important;
+  letter-spacing: 0.08em;
+  color: rgba(224, 242, 254, 0.88) !important;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.06);
+  line-height: 1.35 !important;
+}
+
+.jarvis-hud-app:last-child,
+.jarvis-hud-tip:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.jarvis-hud-empty {
+  font-size: 0.62rem !important;
+  color: rgba(100, 116, 139, 0.85) !important;
+  letter-spacing: 0.06em;
+  line-height: 1.4 !important;
+}
+
+.jarvis-hud-clock-block {
+  margin-bottom: 10px;
+}
+
+.jarvis-hud-clock {
+  font-size: 1.35rem !important;
+  font-weight: 200 !important;
+  letter-spacing: 0.12em !important;
+  color: #f0f9ff !important;
+  font-family: 'SF Mono', 'Menlo', monospace !important;
+  text-shadow: 0 0 24px rgba(34, 211, 238, 0.25);
+}
+
+.jarvis-hud-date {
+  font-size: 0.62rem !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.8) !important;
+  margin-top: 4px !important;
+}
+
+.jarvis-hud-event-title {
+  font-size: 0.68rem !important;
+  color: #e0f2fe !important;
+  margin-top: 4px !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.03em;
+}
+
+.jarvis-hud-task {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(34, 211, 238, 0.06);
+}
+
+.jarvis-hud-task-title {
+  font-size: 0.66rem !important;
+  color: rgba(224, 242, 254, 0.9) !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.03em;
+}
+
+/* Desktop HUD wrapper */
+.jarvis-hud-desktop {
+  display: contents;
+}
+
+.jarvis-hud-mobile {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .jarvis-hud-desktop {
+    display: none;
+  }
+
+  .jarvis-hud-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: absolute;
+    top: max(52px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .jarvis-center {
+    padding-top: 168px !important;
+    justify-content: center;
+  }
+
+  .jarvis-brand {
+    font-size: clamp(2rem, 9vw, 2.6rem) !important;
+    margin-bottom: 0 !important;
+  }
+
+  .jarvis-tagline {
+    margin-bottom: 16px !important;
+    font-size: 0.58rem !important;
+  }
+
+  .jarvis-orb-container {
+    width: min(220px, 58vw);
+    height: min(220px, 58vw);
+    margin-bottom: 16px;
+  }
+
+  .jarvis-hud-tiles-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .jarvis-hud-tiles-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .jarvis-hud-tile {
+    flex: 0 0 auto;
+    min-width: 72px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(8, 14, 28, 0.78);
+    border: 1px solid rgba(34, 211, 238, 0.14);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .jarvis-hud-tile--warn {
+    border-color: rgba(251, 191, 36, 0.35);
+  }
+
+  .jarvis-hud-tile--good {
+    border-color: rgba(52, 211, 153, 0.3);
+  }
+
+  .jarvis-hud-tile-label {
+    font-size: 0.48rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(34, 211, 238, 0.55);
+  }
+
+  .jarvis-hud-tile-value {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 0.82rem;
+    color: #f0f9ff;
+    letter-spacing: 0.04em;
+  }
+
+  .jarvis-hud-tile-detail {
+    font-size: 0.5rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(100, 116, 139, 0.95);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 88px;
+  }
+
+  .jarvis-hud-mobile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .jarvis-hud-panel--compact {
+    padding: 10px 11px;
+  }
+
+  .jarvis-hud-panel--compact .jarvis-hud-title {
+    margin-bottom: 6px !important;
+    font-size: 0.5rem !important;
+  }
+
+  .jarvis-hud-panel--compact .jarvis-hud-app,
+  .jarvis-hud-panel--compact .jarvis-hud-tip {
+    font-size: 0.58rem !important;
+    padding: 3px 0;
+  }
+
+  .jarvis-hud-mobile-tips {
+    padding: 8px 11px;
+  }
+
+  .jarvis-hud-mobile-tips .jarvis-hud-tip {
+    font-size: 0.56rem !important;
+    padding: 2px 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .jarvis-hud {
+    display: none;
+  }
+}
+
+@media (min-width: 961px) and (max-width: 1180px) {
+  .jarvis-hud {
+    width: min(180px, 18vw);
+  }
+
+  .jarvis-hud-panel {
+    padding: 10px 12px;
+  }
+}

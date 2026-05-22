@@ -1,0 +1,54 @@
+{
+  "name": "ai-voice-assistant-pwa",
+  "version": "1.0.0",
+  "description": "Raj — Jarvis-style voice assistant for iPhone. Opens real apps, speaks calendar and weather.",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-all.mjs",
+    "dev:app": "vite",
+    "setup:local": "node scripts/ensure-local-services.mjs",
+    "chatterbox": "bash scripts/start-chatterbox.sh",
+    "freellmapi": "bash scripts/start-freellmapi.sh",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "@elevenlabs/react": "^1.6.2",
+    "@emotion/react": "^11.10.5",
+    "@emotion/styled": "^11.10.5",
+    "@mui/icons-material": "^5.11.9",
+    "@mui/material": "^5.11.10",
+    "@reduxjs/toolkit": "^1.9.3",
+    "date-fns": "^2.29.3",
+    "edge-tts-universal": "^1.4.0",
+    "framer-motion": "^12.23.12",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.0",
+    "react-redux": "^8.0.5",
+    "react-router-dom": "^6.8.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.27",
+    "@types/react-dom": "^18.0.10",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "@vitejs/plugin-react": "^3.1.0",
+    "eslint": "^8.35.0",
+    "eslint-plugin-react": "^7.32.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.3.4",
+    "vite": "^4.1.0",
+    "vite-plugin-pwa": "^0.14.0"
+  },
+  "keywords": [
+    "pwa",
+    "voice-assistant",
+    "ai",
+    "productivity",
+    "react",
+    "voice-commands"
+  ],
+  "author": "AI Voice Assistant Team",
+  "license": "MIT"
+}
