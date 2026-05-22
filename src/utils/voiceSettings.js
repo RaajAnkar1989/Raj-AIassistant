@@ -54,7 +54,7 @@ export function resolveWorkingEngine(requested, pro) {
     if (engine === 'azure' && hasAzureKeys(settings)) return 'azure'
     if (engine === 'elevenlabs' && hasElevenLabsKey(settings)) return 'elevenlabs'
     if (engine === 'chatterbox' && import.meta.env.DEV) return 'chatterbox'
-    if (engine === 'edge' && import.meta.env.DEV) return 'edge'
+    if (engine === 'edge') return 'edge'
     if (engine === 'web-speech') return 'web-speech'
     return null
   }
@@ -68,8 +68,12 @@ export function resolveWorkingEngine(requested, pro) {
     return tryEngine('chatterbox') || tryEngine('edge') || 'web-speech'
   }
 
+  if (want === 'auto' && !import.meta.env.DEV) {
+    return tryEngine('edge') || 'web-speech'
+  }
+
   if (want === 'auto' && isMobileDevice()) {
-    return tryEngine('chatterbox') || tryEngine('edge') || 'web-speech'
+    return tryEngine('edge') || tryEngine('chatterbox') || 'web-speech'
   }
 
   return (

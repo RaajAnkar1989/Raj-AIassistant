@@ -17,10 +17,10 @@ export const AI_PROVIDERS = {
   },
   freellmapi: {
     id: 'freellmapi',
-    label: 'FreeLLMAPI (local, free)',
-    subtitle: 'Uses keys from FreeLLMAPI dashboard · auto-linked on npm run dev',
-    keyUrl: 'http://127.0.0.1:3001',
-    signupLabel: 'Manage provider keys (same keys as localhost:5173/keys)',
+    label: 'FreeLLMAPI (auto)',
+    subtitle: 'Auto model routing — same stack as local npm run dev. Set VITE_FREELLMAPI_URL + VITE_FREELLMAPI_KEY on Netlify.',
+    keyUrl: null,
+    signupLabel: null,
     models: [
       { id: 'auto', label: 'Auto (best available — recommended)' },
       { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
@@ -152,9 +152,45 @@ export function getActiveProviderInfo() {
   return { id, ...AI_PROVIDERS[id], model: getBrainModel() }
 }
 
+function readEnvBrainKey(provider) {
+  if (typeof import.meta === 'undefined') return ''
+  if (provider === 'freellmapi') {
+    return sanitizeApiKey(import.meta.env.VITE_FREELLMAPI_KEY)
+  }
+  if (provider === 'gemini') {
+    return sanitizeApiKey(import.meta.env.VITE_GEMINI_API_KEY)
+  }
+  return ''
+}
+
+/** Netlify/production: bake in brain config from VITE_* env (same as local auto-link). */
+export function applyBuiltInBrainConfig() {
+  if (typeof window === 'undefined') return { applied: false }
+
+  const freellmKey = readEnvBrainKey('freellmapi')
+  if (freellmKey?.startsWith('freellmapi-')) {
+    setProviderApiKey('freellmapi', freellmKey)
+    setBrainProvider('freellmapi')
+    setBrainModel('auto')
+    return { applied: true, provider: 'freellmapi' }
+  }
+
+  const geminiKey = readEnvBrainKey('gemini')
+  if (geminiKey?.startsWith('AIza')) {
+    setProviderApiKey('gemini', geminiKey)
+    setBrainProvider('gemini')
+    setBrainModel('gemini-2.0-flash-lite')
+    return { applied: true, provider: 'gemini' }
+  }
+
+  return { applied: false }
+}
+
 /** One-time fixes: wrong provider/key slot, stale OpenAI quota flag. */
 export function migrateBrainSettings() {
   if (typeof window === 'undefined') return
+
+  applyBuiltInBrainConfig()
 
   const provider = localStorage.getItem(BRAIN_PROVIDER_KEY)
   const geminiKey = localStorage.getItem(getProviderKeyStorageKey('gemini'))?.trim()
@@ -184,6 +220,12 @@ export function migrateBrainSettings() {
 
   if (!localStorage.getItem(BRAIN_PROVIDER_KEY)) {
     localStorage.setItem(BRAIN_PROVIDER_KEY, DEFAULT_BRAIN_PROVIDER)
+  }
+
+  if ((localStorage.getItem(BRAIN_PROVIDER_KEY) || DEFAULT_BRAIN_PROVIDER) === 'freellmapi') {
+    if (!localStorage.getItem(BRAIN_MODEL_KEY)) {
+      localStorage.setItem(BRAIN_MODEL_KEY, 'auto')
+    }
   }
 
   if (localStorage.getItem(BRAIN_PROVIDER_KEY) === 'gemini') {

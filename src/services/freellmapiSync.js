@@ -1,6 +1,7 @@
 import {
   getBrainProvider,
   setBrainProvider,
+  setBrainModel,
   setProviderApiKey,
   sanitizeApiKey,
   getProviderApiKey,
@@ -23,13 +24,26 @@ function setCachedPort(port) {
   } catch {}
 }
 
+function getHostedFreeLLMRoot() {
+  const configured = import.meta.env.VITE_FREELLMAPI_URL?.trim()
+  if (configured) return configured.replace(/\/v1\/?$/, '')
+  return ''
+}
+
 function getAdminBaseUrl() {
   if (import.meta.env.DEV) return '/api/brain/freellmapi-admin'
-  const root = (import.meta.env.VITE_FREELLMAPI_URL || `http://127.0.0.1:${getCachedPort() || '3001'}/v1`).replace(
-    /\/v1\/?$/,
-    '',
-  )
-  return `${root}/api`
+  const hosted = getHostedFreeLLMRoot()
+  if (hosted) return `${hosted}/api`
+  return `http://127.0.0.1:${getCachedPort() || '3001'}/api`
+}
+
+function applyEnvFreeLLMAPIKey() {
+  const envKey = sanitizeApiKey(import.meta.env.VITE_FREELLMAPI_KEY)
+  if (!envKey?.startsWith('freellmapi-')) return null
+  setProviderApiKey('freellmapi', envKey)
+  setBrainProvider('freellmapi')
+  setBrainModel('auto')
+  return envKey
 }
 
 async function discoverPortInBrowser() {
@@ -66,8 +80,13 @@ async function fetchJson(path) {
   return res.json()
 }
 
-/** Pull unified key (+ provider key count) from local FreeLLMAPI. */
+/** Pull unified key (+ provider key count) from env, hosted FreeLLMAPI, or local dev. */
 export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
+  const envKey = applyEnvFreeLLMAPIKey()
+  if (envKey) {
+    return { apiKey: envKey, providerKeyCount: null, cached: false, fromEnv: true }
+  }
+
   if (!force) {
     try {
       const last = Number(sessionStorage.getItem(SYNC_CACHE_KEY) || 0)
@@ -87,6 +106,19 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
       const keys = await fetchJson('/keys')
       providerKeyCount = Array.isArray(keys) ? keys.filter((k) => k.enabled).length : 0
     } catch {}
+  } else if (getHostedFreeLLMRoot()) {
+    try {
+      const data = await fetchJson('/settings/api-key')
+      apiKey = data.apiKey
+      try {
+        const keys = await fetchJson('/keys')
+        providerKeyCount = Array.isArray(keys) ? keys.filter((k) => k.enabled).length : 0
+      } catch {}
+    } catch {
+      const discovered = await discoverPortInBrowser()
+      apiKey = discovered.apiKey
+      providerKeyCount = discovered.providerKeyCount
+    }
   } else {
     const discovered = await discoverPortInBrowser()
     apiKey = discovered.apiKey
@@ -95,11 +127,16 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
 
   const unified = sanitizeApiKey(apiKey)
   if (!unified.startsWith('freellmapi-')) {
-    throw new Error('FreeLLMAPI not reachable or no unified key found. Run npm run dev.')
+    throw new Error(
+      import.meta.env.PROD
+        ? 'FreeLLMAPI not linked. Add VITE_FREELLMAPI_URL and VITE_FREELLMAPI_KEY in Netlify env vars.'
+        : 'FreeLLMAPI not reachable or no unified key found. Run npm run dev.'
+    )
   }
 
   setProviderApiKey('freellmapi', unified)
   setBrainProvider('freellmapi')
+  setBrainModel('auto')
 
   try {
     sessionStorage.setItem(SYNC_CACHE_KEY, String(Date.now()))

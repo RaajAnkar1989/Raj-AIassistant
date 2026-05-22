@@ -560,7 +560,7 @@ const FreeAssistantHome = () => {
           RAJ
         </Typography>
         <Typography className="jarvis-tagline">
-          {brainReady ? `${brainInfo.label} · Chatterbox voice · fast commands` : 'Add brain key in Settings'}
+          {brainReady ? `${brainInfo.label} · Jarvis voice · fast commands` : 'Add brain key in Settings'}
         </Typography>
 
         <Box className="jarvis-orb-container">

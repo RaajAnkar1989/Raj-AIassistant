@@ -432,12 +432,13 @@ class TtsService {
     let chain = [primary, ...freeChain.filter((e) => e !== primary)]
 
     if (freeMode) {
-      if (userRequested === 'chatterbox' || userRequested === 'auto') {
+      if (import.meta.env.DEV) {
         chain = ['chatterbox', 'edge', 'web-speech']
-      } else if (userRequested === 'edge' || userRequested === 'web-speech') {
-        chain = [userRequested, 'chatterbox', 'edge', 'web-speech'].filter(
-          (e, i, arr) => arr.indexOf(e) === i
-        )
+      } else {
+        chain = ['edge', 'web-speech']
+      }
+      if (userRequested === 'edge' || userRequested === 'web-speech') {
+        chain = [userRequested, ...chain.filter((e) => e !== userRequested)]
       }
     } else {
       chain = [
@@ -451,7 +452,6 @@ class TtsService {
     let lastError = null
     for (const engine of chain) {
       try {
-        if (engine === 'edge' && !import.meta.env.DEV) continue
         if (engine === 'chatterbox' && !import.meta.env.DEV) continue
         if (engine === 'azure' && (!opts.key || !opts.region)) continue
         if (engine === 'openai') {

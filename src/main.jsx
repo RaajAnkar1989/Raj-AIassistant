@@ -64,12 +64,10 @@ async function boot() {
   migrateBrainSettings()
   if (getBrainProvider() !== 'openai') clearQuotaExceededCache()
 
-  if (import.meta.env.DEV || getBrainProvider() === 'freellmapi') {
-    try {
-      await syncFreeLLMAPIFromLocal()
-    } catch {
-      // FreeLLMAPI may still be starting — settings panel can retry
-    }
+  try {
+    await syncFreeLLMAPIFromLocal()
+  } catch {
+    // Hosted env may use VITE_GEMINI_API_KEY instead — applyBuiltInBrainConfig already ran
   }
 
   const ok = await migrateAppShell()

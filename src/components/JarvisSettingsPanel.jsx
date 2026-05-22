@@ -80,7 +80,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
     setConnectionType(getPreferredConnectionType())
     setVoiceBackendChoice(getVoiceBackend())
     setBrainProviderChoice(getBrainProvider())
-    setBrainModelChoice(getBrainModel())
+    setBrainModelChoice(getBrainProvider() === 'freellmapi' ? 'auto' : getBrainModel())
     setBrainApiKey(getProviderApiKey(getBrainProvider()))
     setPromptSource(getElevenLabsPromptSource())
     setGoogleId(localStorage.getItem('gmail_client_id') || '')
@@ -135,7 +135,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
       }
 
       setBrainProvider(brainProvider)
-      setBrainModel(brainModel)
+      setBrainModel(brainProvider === 'freellmapi' ? 'auto' : brainModel)
       setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
       if (brainProvider !== 'openai') clearQuotaExceededCache()
       clearBrainHistory()
@@ -169,7 +169,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
       saveVoicePro(pro)
     } catch {}
     setBrainProvider(brainProvider)
-    setBrainModel(brainModel)
+    setBrainModel(brainProvider === 'freellmapi' ? 'auto' : brainModel)
     if (brainProvider !== 'keyword') {
       setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
     }
@@ -390,8 +390,10 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
             />
             <Typography variant="caption" sx={{ color: freellmLinked ? '#4ade80' : '#64748b', display: 'block', lineHeight: 1.45 }}>
               {freellmLinked
-                ? `Linked from FreeLLMAPI · ${freellmLinked.providerKeyCount} provider key(s) loaded`
-                : 'Linking to FreeLLMAPI… add keys at localhost:5173/keys or http://127.0.0.1:3011'}
+                ? `Linked · ${freellmLinked.providerKeyCount ?? 'auto'} provider key(s) · model Auto`
+                : import.meta.env.VITE_FREELLMAPI_KEY
+                  ? 'Linked from Netlify env vars (VITE_FREELLMAPI_KEY)'
+                  : 'Run npm run dev locally, or set VITE_FREELLMAPI_URL + VITE_FREELLMAPI_KEY on Netlify'}
             </Typography>
           </Box>
         ) : brainProvider !== 'keyword' ? (
@@ -424,7 +426,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
             : 'Enter the key on each device (iPhone and Mac separately). In Google AI Studio set key restrictions to None. Model: Flash-Lite has the best free quota.'}
         </Typography>
 
-        {brainProvider !== 'keyword' && (
+        {brainProvider !== 'keyword' && brainProvider !== 'freellmapi' && (
           <FormControl fullWidth size="small" sx={{ mb: 1 }}>
             <InputLabel sx={{ color: '#64748b' }}>Model</InputLabel>
             <Select
@@ -440,6 +442,12 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
               ))}
             </Select>
           </FormControl>
+        )}
+
+        {brainProvider === 'freellmapi' && (
+          <Typography variant="caption" sx={{ color: '#4ade80', display: 'block', mb: 1, lineHeight: 1.45 }}>
+            Model: Auto — FreeLLMAPI picks the best free model (same as local dev).
+          </Typography>
         )}
 
         <Button
