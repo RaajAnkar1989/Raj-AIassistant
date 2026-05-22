@@ -22,20 +22,16 @@ export function formatBrainError(message, provider = 'openai') {
   const msg = String(message || '').trim()
   if (provider === 'openai') return formatOpenAIError(msg)
 
-  if (provider === 'freellmapi') {
-    if (/not running|ECONNREFUSED|503|fetch failed/i.test(msg)) {
-      return 'FreeLLMAPI is not running. Run npm run dev (starts brain automatically) or npm run freellmapi in another terminal.'
+  if (provider === 'ollama') {
+    if (/not running|ECONNREFUSED|503|fetch failed|not reachable|unreachable|tunnel/i.test(msg)) {
+      return import.meta.env.PROD
+        ? 'Ollama brain offline. On your Mac keep running: ollama serve and npm run tunnel:ollama — then npm run sync:ollama-netlify if tunnel URL changed.'
+        : 'Ollama is not running. In Terminal run: ollama serve'
     }
-    if (/all models exhausted|routing_error|no healthy keys/i.test(msg)) {
-      return 'FreeLLMAPI needs provider keys. Open http://127.0.0.1:3001 or localhost:5173/keys, add a Gemini or Groq key, then test again.'
+    if (/model.*not found|does not exist/i.test(msg)) {
+      return 'Model not installed. Run: ollama pull qwen2.5:7b (or pick an installed model in Settings)'
     }
-    if (/invalid.*api key|401|403|unauthorized/i.test(msg)) {
-      return 'Invalid FreeLLMAPI key. Copy your unified freellmapi-… key from the FreeLLMAPI dashboard Keys page.'
-    }
-    if (isOpenAIQuotaError(msg)) {
-      return 'FreeLLMAPI providers are rate-limited. Wait a minute or add more provider keys in the FreeLLMAPI dashboard.'
-    }
-    return msg || 'FreeLLMAPI request failed'
+    return msg || 'Ollama request failed'
   }
 
   if (provider === 'gemini') {

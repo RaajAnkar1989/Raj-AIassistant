@@ -3,7 +3,7 @@ import { getTtsOptions, loadVoicePro, resolveWorkingEngine } from '../utils/voic
 import { getVoiceBackend } from '../constants/elevenlabsStorage'
 import { isMobileDevice } from '../utils/device'
 
-const TTS_FETCH_TIMEOUT_MS = 5000
+const TTS_FETCH_TIMEOUT_MS = isMobileDevice() ? 18000 : 8000
 const CHATTERBOX_TIMEOUT_MS = 20000
 
 const MALE_WEB_SPEECH_RE =
@@ -22,6 +22,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = TTS_FETCH_TIMEOUT
 const WEB_SPEECH_QUALITY_RE = /neural|natural|enhanced|premium|google|samantha|karen|daniel|moira|veena|rishi|heera|aditi/i
 
 let audioUnlocked = false
+let primedAudio = null
 
 export function unlockAudioPlayback() {
   if (audioUnlocked || typeof window === 'undefined') return Promise.resolve()
@@ -43,6 +44,30 @@ export function unlockAudioPlayback() {
     audioUnlocked = true
     resolve()
   })
+}
+
+/** Prime HTML5 audio during the user's tap — required for iPhone playback after async brain calls. */
+export async function primeAudioForSession() {
+  if (typeof window === 'undefined') return
+  await unlockAudioPlayback()
+  try {
+    if (!primedAudio) {
+      primedAudio = new Audio()
+      primedAudio.preload = 'auto'
+      primedAudio.playsInline = true
+      primedAudio.setAttribute('playsinline', 'true')
+      primedAudio.setAttribute('webkit-playsinline', 'true')
+    }
+    primedAudio.src =
+      'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADhAC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAA4T/CAAA//tQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwA8MAAAAAAAAAABQgJAUHQQAB9AAA4QCbKAAA//tQZAwP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwA8MAAAAAAAAAABQgJAUHQQAB9AAA4QCbKAAA'
+    primedAudio.volume = 0.01
+    await primedAudio.play()
+    primedAudio.pause()
+    primedAudio.currentTime = 0
+    audioUnlocked = true
+  } catch {
+    // Permission may arrive on first real playback attempt.
+  }
 }
 
 function waitForVoices(timeoutMs = 2500) {
@@ -104,6 +129,7 @@ function resolveNeuralVoiceId(options) {
 export const TTS_INTERRUPTED = 'INTERRUPTED'
 
 let chatterboxWarmed = false
+let edgeWarmed = false
 
 export async function warmUpChatterbox() {
   if (!import.meta.env.DEV || chatterboxWarmed) return
@@ -120,6 +146,24 @@ export async function warmUpChatterbox() {
     )
   } catch {
     chatterboxWarmed = false
+  }
+}
+
+export async function warmUpEdgeTts() {
+  if (edgeWarmed) return
+  edgeWarmed = true
+  try {
+    await fetchWithTimeout(
+      '/api/tts/edge',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Ready.' }),
+      },
+      TTS_FETCH_TIMEOUT_MS
+    )
+  } catch {
+    edgeWarmed = false
   }
 }
 
@@ -173,8 +217,16 @@ class TtsService {
     const url = URL.createObjectURL(blob)
     return new Promise((resolve, reject) => {
       this.activeReject = reject
-      const audio = new Audio(url)
+      const audio = primedAudio || new Audio()
+      if (!primedAudio) {
+        audio.preload = 'auto'
+        audio.playsInline = true
+        audio.setAttribute('playsinline', 'true')
+        audio.setAttribute('webkit-playsinline', 'true')
+      }
+      primedAudio = audio
       audio.volume = Math.min(1, Math.max(0, volume ?? 1))
+      audio.src = url
       this.currentAudio = audio
       const cleanup = () => {
         try { URL.revokeObjectURL(url) } catch {}
@@ -190,9 +242,23 @@ class TtsService {
         cleanup()
         fn()
       }
+      const tryPlay = () =>
+        audio
+          .play()
+          .then(() => {
+            audioUnlocked = true
+          })
+          .catch(async (e) => {
+            if (e?.name === 'NotAllowedError') {
+              await unlockAudioPlayback()
+              return audio.play()
+            }
+            throw e
+          })
+
       audio.onended = () => finish(resolve)
       audio.onerror = () => finish(() => reject(new Error('Audio playback failed')))
-      audio.play().catch((e) => finish(() => reject(e)))
+      tryPlay().catch((e) => finish(() => reject(e)))
     })
   }
 
@@ -477,7 +543,9 @@ class TtsService {
     }
     const fallbackMsg =
       isMobileDevice() && freeMode
-        ? 'Voice playback failed. Check Settings → Auto-speak is on, then try again.'
+        ? lastError?.message?.includes('NotAllowed')
+          ? 'Tap the mic once, then speak again so Raj can play voice on iPhone.'
+          : lastError?.message || 'Voice playback failed on phone. Tap mic to restart session.'
         : lastError?.message
     throw new Error(fallbackMsg || 'All TTS engines failed')
   }

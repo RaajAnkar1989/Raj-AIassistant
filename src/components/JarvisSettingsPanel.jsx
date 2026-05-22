@@ -33,6 +33,9 @@ import {
   getBrainProvider,
   getProviderApiKey,
   hasBrainReady,
+  resolveBrainConfig,
+  canUseFreeLLMAPI,
+  canUseGemini,
   setBrainModel,
   setBrainProvider,
   setProviderApiKey,
@@ -41,6 +44,7 @@ import {
 import { clearBrainHistory } from '../services/aiBrainService'
 import { clearRajSession } from '../services/actionRouter'
 import { syncFreeLLMAPIFromLocal } from '../services/freellmapiSync'
+import { syncOllamaFromLocal, getCachedOllamaModels } from '../services/ollamaSync'
 import { clearQuotaExceededCache, isQuotaExceededCached } from '../utils/openaiErrors'
 import { DEFAULT_FREE_VOICE, FREE_NEURAL_VOICES } from '../constants/freeVoices'
 import { loadVoicePro, saveVoicePro } from '../utils/voiceSettings'
@@ -56,8 +60,8 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
   const [usePromptOverride, setUsePromptOverride] = useState(false)
   const [connectionType, setConnectionType] = useState('websocket')
   const [voiceBackend, setVoiceBackendChoice] = useState('free')
-  const [brainProvider, setBrainProviderChoice] = useState('freellmapi')
-  const [brainModel, setBrainModelChoice] = useState('auto')
+  const [brainProvider, setBrainProviderChoice] = useState('ollama')
+  const [brainModel, setBrainModelChoice] = useState('qwen2.5:7b')
   const [brainApiKey, setBrainApiKey] = useState('')
   const [googleId, setGoogleId] = useState('')
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false })
@@ -65,6 +69,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
   const [testingGoogle, setTestingGoogle] = useState(false)
   const [testingBrain, setTestingBrain] = useState(false)
   const [freellmLinked, setFreellmLinked] = useState(null)
+  const [ollamaLinked, setOllamaLinked] = useState(null)
   const [oauthOrigins, setOauthOrigins] = useState([])
   const [ttsEngine, setTtsEngine] = useState('auto')
   const [neuralVoice, setNeuralVoice] = useState(DEFAULT_FREE_VOICE)
@@ -73,6 +78,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
 
   useEffect(() => {
     if (!open) return
+    resolveBrainConfig({ persist: true })
     setElevenKey(localStorage.getItem('elevenlabs_api_key') || '')
     setAgentId(getElevenLabsAgentId())
     setSystemPrompt(localStorage.getItem('elevenlabs_system_prompt') || '')
@@ -90,13 +96,32 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
     setTtsEngine(pro.ttsEngine || 'auto')
     setNeuralVoice(pro.azure?.voiceName || DEFAULT_FREE_VOICE)
 
-    if (getBrainProvider() === 'freellmapi') {
+    if (import.meta.env.DEV) {
+      syncOllamaFromLocal()
+        .then(({ running, models, model }) => {
+          if (running) {
+            setBrainProviderChoice('ollama')
+            setBrainModelChoice(model)
+            setOllamaLinked({ models })
+          } else {
+            setOllamaLinked(null)
+          }
+        })
+        .catch(() => setOllamaLinked(null))
+    }
+
+    if (getBrainProvider() === 'freellmapi' && canUseFreeLLMAPI()) {
       syncFreeLLMAPIFromLocal()
         .then(({ apiKey, providerKeyCount }) => {
           setBrainApiKey(apiKey)
           setFreellmLinked({ providerKeyCount })
         })
         .catch(() => setFreellmLinked(null))
+    } else if (canUseGemini()) {
+      setBrainProviderChoice('gemini')
+      setBrainModelChoice(getBrainModel())
+      setBrainApiKey(getProviderApiKey('gemini'))
+      setFreellmLinked(null)
     } else {
       setFreellmLinked(null)
     }
@@ -121,22 +146,43 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
 
     setTestingBrain(true)
     try {
-      if (brainProvider === 'freellmapi') {
-        const linked = await syncFreeLLMAPIFromLocal({ force: true })
-        setBrainApiKey(linked.apiKey)
-        setFreellmLinked({ providerKeyCount: linked.providerKeyCount })
-        if (!linked.providerKeyCount) {
-          toast.error('FreeLLMAPI linked, but no provider keys yet. Add keys at http://127.0.0.1:3011 or localhost:5173/keys')
+      if (brainProvider === 'ollama') {
+        const linked = await syncOllamaFromLocal({ force: true })
+        setOllamaLinked(linked.running ? { models: linked.models } : null)
+        if (!linked.running) {
+          toast.error('Ollama not running. In Terminal: ollama serve — then: ollama pull qwen2.5:7b')
           return
         }
-      } else if (!brainApiKey.trim()) {
+        setBrainModelChoice(linked.model)
+      } else if (brainProvider === 'freellmapi') {
+        if (!canUseFreeLLMAPI()) {
+          if (canUseGemini()) {
+            setBrainProvider('gemini')
+            setBrainModel('gemini-2.0-flash-lite')
+            setProviderApiKey('gemini', getProviderApiKey('gemini'))
+          } else {
+            toast.error('FreeLLMAPI only works on your Mac. On phone, Gemini auto-links from Netlify.')
+            return
+          }
+        } else {
+          const linked = await syncFreeLLMAPIFromLocal({ force: true })
+          setBrainApiKey(linked.apiKey)
+          setFreellmLinked({ providerKeyCount: linked.providerKeyCount })
+          if (!linked.providerKeyCount) {
+            toast.error('FreeLLMAPI linked, but no provider keys yet. Add keys at http://127.0.0.1:3011 or localhost:5173/keys')
+            return
+          }
+        }
+      } else if (!brainApiKey.trim() && !(brainProvider === 'gemini' && import.meta.env.VITE_GEMINI_API_KEY)) {
         toast.error('Paste your API key first.')
         return
       }
 
       setBrainProvider(brainProvider)
       setBrainModel(brainProvider === 'freellmapi' ? 'auto' : brainModel)
-      setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
+      if (brainProvider !== 'ollama') {
+        setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
+      }
       if (brainProvider !== 'openai') clearQuotaExceededCache()
       clearBrainHistory()
 
@@ -170,7 +216,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
     } catch {}
     setBrainProvider(brainProvider)
     setBrainModel(brainProvider === 'freellmapi' ? 'auto' : brainModel)
-    if (brainProvider !== 'keyword') {
+    if (brainProvider !== 'keyword' && brainProvider !== 'ollama') {
       setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
     }
     if (brainProvider !== 'openai') {
@@ -315,7 +361,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
         )}
 
         <Typography variant="caption" sx={{ color: '#22d3ee', mb: 1, display: 'block' }}>
-          AI BRAIN (pick a free provider)
+          AI BRAIN {import.meta.env.PROD && import.meta.env.VITE_GEMINI_API_KEY ? '(auto-linked on Netlify)' : '(local Ollama on Mac — no API keys)'}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
           <Chip
@@ -323,7 +369,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
             icon={hasBrainReady() ? <CheckCircle /> : <ErrorOutline />}
             label={
               hasBrainReady()
-                ? `${AI_PROVIDERS[brainProvider]?.label || 'Brain'} · ${brainModel}`
+                ? `${AI_PROVIDERS[getBrainProvider()]?.label || 'Brain'} · ${getBrainModel()}`
                 : 'Not configured'
             }
             sx={{
@@ -396,7 +442,31 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
                   : 'Run npm run dev locally, or set VITE_FREELLMAPI_URL + VITE_FREELLMAPI_KEY on Netlify'}
             </Typography>
           </Box>
+        ) : brainProvider === 'ollama' ? (
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="caption" sx={{ color: ollamaLinked ? '#4ade80' : '#fbbf24', display: 'block', lineHeight: 1.45 }}>
+              {ollamaLinked
+                ? `Ollama running · ${ollamaLinked.models?.length || 0} model(s) installed · no API key needed`
+                : 'Start Ollama: ollama serve — then pull Qwen: ollama pull qwen2.5:7b'}
+            </Typography>
+          </Box>
         ) : brainProvider !== 'keyword' ? (
+          import.meta.env.VITE_GEMINI_API_KEY && brainProvider === 'gemini' ? (
+            <Box sx={{ mb: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                type="password"
+                label="Gemini API key (auto-linked)"
+                value={brainApiKey || '••••••••'}
+                InputProps={{ readOnly: true }}
+                sx={{ mb: 1, '& .MuiOutlinedInput-root': { color: '#e2e8f0', '& fieldset': { borderColor: '#1e3a5f' } } }}
+              />
+              <Typography variant="caption" sx={{ color: '#4ade80', display: 'block', lineHeight: 1.45 }}>
+                Synced from your Mac — no key entry needed on phone.
+              </Typography>
+            </Box>
+          ) : (
           <TextField
             fullWidth
             size="small"
@@ -406,6 +476,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
             onChange={(e) => setBrainApiKey(sanitizeApiKey(e.target.value))}
             sx={{ mb: 1, '& .MuiOutlinedInput-root': { color: '#e2e8f0', '& fieldset': { borderColor: '#1e3a5f' } } }}
           />
+          )
         ) : null}
 
         {brainProvider !== 'keyword' && (
@@ -421,7 +492,11 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
         )}
 
         <Typography variant="caption" sx={{ color: '#fbbf24', display: 'block', mb: 1, lineHeight: 1.45 }}>
-          {brainProvider === 'freellmapi'
+          {brainProvider === 'ollama'
+            ? import.meta.env.PROD
+              ? 'Uses your Mac Qwen via Netlify proxy. Mac must stay on with ollama serve + npm run tunnel:ollama.'
+              : 'Local brain only on Mac dev. For phone run tunnel:ollama then sync:ollama-netlify.'
+            : brainProvider === 'freellmapi'
             ? 'Provider keys pasted in FreeLLMAPI (localhost:5173/keys) are used automatically — no need to copy them here.'
             : 'Enter the key on each device (iPhone and Mac separately). In Google AI Studio set key restrictions to None. Model: Flash-Lite has the best free quota.'}
         </Typography>
@@ -435,7 +510,10 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
               onChange={(e) => setBrainModelChoice(e.target.value)}
               sx={{ color: '#e2e8f0', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1e3a5f' } }}
             >
-              {(AI_PROVIDERS[brainProvider]?.models || []).map((m) => (
+              {(brainProvider === 'ollama' && getCachedOllamaModels().length
+                ? getCachedOllamaModels().map((id) => ({ id, label: id }))
+                : AI_PROVIDERS[brainProvider]?.models || []
+              ).map((m) => (
                 <MenuItem key={m.id} value={m.id}>
                   {m.label}
                 </MenuItem>

@@ -15,6 +15,24 @@ export const AI_PROVIDERS = {
     defaultModel: 'rules',
     free: true,
   },
+  ollama: {
+    id: 'ollama',
+    label: 'Ollama (local, free)',
+    subtitle: 'Qwen on your Mac — free, no API keys. For phone: run tunnel:ollama on Mac.',
+    keyUrl: 'https://ollama.com/download',
+    signupLabel: 'Get Ollama for Mac',
+    models: [
+      { id: 'qwen2.5-coder:1.5b', label: 'Qwen 2.5 Coder 1.5B (fast, installed)' },
+      { id: 'qwen2.5:7b', label: 'Qwen 2.5 7B (recommended)' },
+      { id: 'qwen2.5:14b', label: 'Qwen 2.5 14B' },
+      { id: 'qwen2.5:3b', label: 'Qwen 2.5 3B (fastest)' },
+      { id: 'qwen3:8b', label: 'Qwen 3 8B' },
+      { id: 'llama3.2:3b', label: 'Llama 3.2 3B' },
+    ],
+    defaultModel: 'qwen2.5-coder:1.5b',
+    free: true,
+    local: true,
+  },
   freellmapi: {
     id: 'freellmapi',
     label: 'FreeLLMAPI (auto)',
@@ -71,10 +89,11 @@ export const AI_PROVIDERS = {
   },
 }
 
-export const DEFAULT_BRAIN_PROVIDER = 'freellmapi'
+export const DEFAULT_BRAIN_PROVIDER = 'ollama'
 
 export function getBrainProvider() {
   if (typeof window === 'undefined') return DEFAULT_BRAIN_PROVIDER
+  resolveBrainConfig({ persist: true })
   const stored = localStorage.getItem(BRAIN_PROVIDER_KEY)
   return AI_PROVIDERS[stored] ? stored : DEFAULT_BRAIN_PROVIDER
 }
@@ -113,6 +132,7 @@ export function sanitizeApiKey(key) {
 export function getProviderApiKey(provider = getBrainProvider()) {
   if (typeof window === 'undefined') return ''
   if (provider === 'keyword') return ''
+  if (provider === 'ollama') return 'local'
   if (provider === 'openai') {
     const stored = sanitizeApiKey(localStorage.getItem(getProviderKeyStorageKey('openai')))
     if (stored) return stored
@@ -135,16 +155,24 @@ export function getProviderApiKey(provider = getBrainProvider()) {
 }
 
 export function setProviderApiKey(provider, key) {
-  if (!AI_PROVIDERS[provider] || provider === 'keyword') return
+  if (!AI_PROVIDERS[provider] || provider === 'keyword' || provider === 'ollama') return
   const trimmed = sanitizeApiKey(key)
   localStorage.setItem(getProviderKeyStorageKey(provider), trimmed)
   if (provider === 'openai') localStorage.setItem('openai_api_key', trimmed)
 }
 
 export function hasBrainReady() {
-  const provider = getBrainProvider()
+  const { provider, ready } = resolveBrainConfig({ persist: false })
   if (provider === 'keyword') return true
-  return Boolean(getProviderApiKey(provider))
+  if (provider === 'ollama') {
+    if (!canUseOllama()) return false
+    try {
+      return sessionStorage.getItem('raj_ollama_running') === '1'
+    } catch {
+      return false
+    }
+  }
+  return ready
 }
 
 export function getActiveProviderInfo() {
@@ -163,37 +191,120 @@ function readEnvBrainKey(provider) {
   return ''
 }
 
+function isPublicFreeLLMAPIUrl(url) {
+  if (!url?.trim()) return false
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase()
+    return host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('.local')
+  } catch {
+    return false
+  }
+}
+
+function readStoredKey(provider) {
+  if (typeof window === 'undefined') return ''
+  return sanitizeApiKey(localStorage.getItem(getProviderKeyStorageKey(provider)))
+}
+
+export function canUseFreeLLMAPI() {
+  const key = readEnvBrainKey('freellmapi') || readStoredKey('freellmapi')
+  if (!key?.startsWith('freellmapi-')) return false
+  if (import.meta.env.DEV) return true
+  return isPublicFreeLLMAPIUrl(import.meta.env.VITE_FREELLMAPI_URL?.trim())
+}
+
+export function canUseGemini() {
+  const key = readEnvBrainKey('gemini') || readStoredKey('gemini')
+  return Boolean(key?.startsWith('AIza'))
+}
+
+export function canUseOllama() {
+  if (import.meta.env.DEV) return true
+  const flag = import.meta.env.VITE_OLLAMA_ENABLED
+  return flag === 'true' || flag === '1'
+}
+
+function getDefaultOllamaModel() {
+  const env = import.meta.env.VITE_OLLAMA_MODEL?.trim()
+  if (env) return env
+  const stored = localStorage.getItem(BRAIN_MODEL_KEY)?.trim()
+  if (stored && AI_PROVIDERS.ollama.models.some((m) => m.id === stored)) return stored
+  return AI_PROVIDERS.ollama.defaultModel
+}
+
+function userChoseCloudBrain() {
+  const stored = localStorage.getItem(BRAIN_PROVIDER_KEY)
+  if (!stored || stored === 'ollama' || stored === 'keyword' || stored === 'freellmapi') return false
+  if (stored === 'gemini') return canUseGemini()
+  return Boolean(readStoredKey(stored) || readEnvBrainKey(stored))
+}
+
+/** Pick the best working brain (Ollama locally, env keys on Netlify). */
+export function resolveBrainConfig({ persist = true } = {}) {
+  if (typeof window === 'undefined') {
+    return { provider: DEFAULT_BRAIN_PROVIDER, ready: false, source: 'none' }
+  }
+
+  if (canUseOllama() && !userChoseCloudBrain()) {
+    if (persist) {
+      setBrainProvider('ollama')
+      setBrainModel(getDefaultOllamaModel())
+    }
+    return {
+      provider: 'ollama',
+      ready: true,
+      source: import.meta.env.DEV ? 'local' : 'env',
+    }
+  }
+
+  if (canUseFreeLLMAPI()) {
+    const key = readEnvBrainKey('freellmapi') || readStoredKey('freellmapi')
+    if (persist) {
+      setProviderApiKey('freellmapi', key)
+      setBrainProvider('freellmapi')
+      setBrainModel('auto')
+    }
+    return { provider: 'freellmapi', ready: true, source: readEnvBrainKey('freellmapi') ? 'env' : 'local' }
+  }
+
+  if (canUseGemini()) {
+    const key = readEnvBrainKey('gemini') || readStoredKey('gemini')
+    if (persist) {
+      setProviderApiKey('gemini', key)
+      setBrainProvider('gemini')
+      const model = localStorage.getItem(BRAIN_MODEL_KEY)
+      if (!AI_PROVIDERS.gemini.models.some((m) => m.id === model)) {
+        setBrainModel('gemini-2.0-flash-lite')
+      }
+    }
+    return { provider: 'gemini', ready: true, source: readEnvBrainKey('gemini') ? 'env' : 'local' }
+  }
+
+  const stored = localStorage.getItem(BRAIN_PROVIDER_KEY)
+  const provider = AI_PROVIDERS[stored] ? stored : DEFAULT_BRAIN_PROVIDER
+  if (provider === 'keyword' || provider === 'ollama') {
+    return {
+      provider,
+      ready: provider === 'keyword' || (provider === 'ollama' && canUseOllama()),
+      source: 'local',
+    }
+  }
+
+  const key = readStoredKey(provider) || readEnvBrainKey(provider)
+  return { provider, ready: Boolean(key), source: key ? 'local' : 'none' }
+}
+
 /** Netlify/production: bake in brain config from VITE_* env (same as local auto-link). */
 export function applyBuiltInBrainConfig() {
-  if (typeof window === 'undefined') return { applied: false }
-
-  const freellmKey = readEnvBrainKey('freellmapi')
-  if (freellmKey?.startsWith('freellmapi-')) {
-    setProviderApiKey('freellmapi', freellmKey)
-    setBrainProvider('freellmapi')
-    setBrainModel('auto')
-    return { applied: true, provider: 'freellmapi' }
-  }
-
-  const geminiKey = readEnvBrainKey('gemini')
-  if (geminiKey?.startsWith('AIza')) {
-    setProviderApiKey('gemini', geminiKey)
-    setBrainProvider('gemini')
-    setBrainModel('gemini-2.0-flash-lite')
-    return { applied: true, provider: 'gemini' }
-  }
-
-  return { applied: false }
+  const resolved = resolveBrainConfig({ persist: true })
+  return { applied: resolved.ready && resolved.provider !== 'keyword', provider: resolved.provider }
 }
 
 /** One-time fixes: wrong provider/key slot, stale OpenAI quota flag. */
 export function migrateBrainSettings() {
   if (typeof window === 'undefined') return
 
-  applyBuiltInBrainConfig()
-
-  const provider = localStorage.getItem(BRAIN_PROVIDER_KEY)
-  const geminiKey = localStorage.getItem(getProviderKeyStorageKey('gemini'))?.trim()
+  const geminiKey = readStoredKey('gemini')
   const openaiKey = localStorage.getItem('openai_api_key')?.trim()
   let aiKey = ''
   try {
@@ -205,35 +316,22 @@ export function migrateBrainSettings() {
   if (!geminiKey && looksLikeGemini(openaiKey)) {
     localStorage.setItem(getProviderKeyStorageKey('gemini'), openaiKey)
   }
-  if (!localStorage.getItem(getProviderKeyStorageKey('gemini'))?.trim() && looksLikeGemini(aiKey)) {
+  if (!readStoredKey('gemini') && looksLikeGemini(aiKey)) {
     localStorage.setItem(getProviderKeyStorageKey('gemini'), aiKey)
   }
 
-  const resolvedGemini = localStorage.getItem(getProviderKeyStorageKey('gemini'))?.trim()
-  const freellmKey = localStorage.getItem(getProviderKeyStorageKey('freellmapi'))?.trim()
-
-  if (freellmKey?.startsWith('freellmapi-')) {
-    localStorage.setItem(BRAIN_PROVIDER_KEY, 'freellmapi')
-  } else if (resolvedGemini && (!provider || provider === 'openai' || provider === 'keyword')) {
-    localStorage.setItem(BRAIN_PROVIDER_KEY, 'gemini')
-  }
-
-  if (!localStorage.getItem(BRAIN_PROVIDER_KEY)) {
-    localStorage.setItem(BRAIN_PROVIDER_KEY, DEFAULT_BRAIN_PROVIDER)
-  }
-
-  if ((localStorage.getItem(BRAIN_PROVIDER_KEY) || DEFAULT_BRAIN_PROVIDER) === 'freellmapi') {
-    if (!localStorage.getItem(BRAIN_MODEL_KEY)) {
-      localStorage.setItem(BRAIN_MODEL_KEY, 'auto')
+  // Stale FreeLLMAPI key on hosted site (localhost brain) — let Gemini env take over.
+  if (import.meta.env.PROD && !canUseFreeLLMAPI() && canUseGemini()) {
+    if (localStorage.getItem(BRAIN_PROVIDER_KEY) === 'freellmapi') {
+      localStorage.removeItem(getProviderKeyStorageKey('freellmapi'))
     }
   }
+
+  resolveBrainConfig({ persist: true })
 
   if (localStorage.getItem(BRAIN_PROVIDER_KEY) === 'gemini') {
     const model = localStorage.getItem(BRAIN_MODEL_KEY)
-    if (model === 'gemini-2.0-flash') {
-      localStorage.setItem(BRAIN_MODEL_KEY, 'gemini-2.0-flash-lite')
-    }
-    if (model === 'gemini-1.5-flash') {
+    if (model === 'gemini-2.0-flash' || model === 'gemini-1.5-flash') {
       localStorage.setItem(BRAIN_MODEL_KEY, 'gemini-2.0-flash-lite')
     }
   }

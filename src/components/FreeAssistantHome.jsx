@@ -13,7 +13,13 @@ import {
 } from '../store/slices/voiceSlice'
 import { executeIntent } from '../services/actionRouter'
 import { getGoogleConnectionStatus, isGoogleConfigured } from '../services/googleIntegration'
-import ttsService, { unlockAudioPlayback, TTS_INTERRUPTED, warmUpChatterbox } from '../services/ttsService'
+import ttsService, {
+  unlockAudioPlayback,
+  primeAudioForSession,
+  TTS_INTERRUPTED,
+  warmUpChatterbox,
+  warmUpEdgeTts,
+} from '../services/ttsService'
 import {
   getMicPermissionHint,
   isSecureMicContext,
@@ -39,7 +45,7 @@ import {
 import JarvisSettingsPanel from './JarvisSettingsPanel'
 import JarvisHud from './JarvisHud'
 import { getTtsOptions } from '../utils/voiceSettings'
-import { isMobileDevice } from '../utils/device'
+import { isMobileDevice, isIOSDevice } from '../utils/device'
 import { useBatteryReminder } from '../hooks/useBatteryReminder'
 import toast from 'react-hot-toast'
 
@@ -159,24 +165,21 @@ const FreeAssistantHome = () => {
     dispatch(setListening(false))
   }, [clearResumeTimer, dispatch])
 
-  /** iOS keeps speechSynthesis silent while the mic capture track is live. */
-  const pauseMicForSpeech = useCallback(() => {
+  /** iOS blocks speaker output while mic capture is active — release before TTS. */
+  const pauseMicForSpeech = useCallback(async () => {
     stopRecognition()
-    const stream = getActiveMicStream()
-    const tracks = []
-    stream?.getAudioTracks().forEach((track) => {
-      if (track.enabled) {
-        track.enabled = false
-        tracks.push(track)
-      }
-    })
-    if (!tracks.length) return null
-    return () => {
-      tracks.forEach((track) => {
-        track.enabled = true
-      })
+    releaseMicrophoneStream()
+    if (isMobileDevice()) {
+      await new Promise((r) => setTimeout(r, 280))
     }
-  }, [stopRecognition])
+    return async () => {
+      if (useWhisper) {
+        try {
+          await requestMicrophoneAccess({ required: true })
+        } catch {}
+      }
+    }
+  }, [stopRecognition, useWhisper])
 
   const resetVoiceSessionRefs = useCallback(() => {
     clearResumeTimer()
@@ -215,8 +218,12 @@ const FreeAssistantHome = () => {
       lastSpokenTextRef.current = spoken
       speakingRef.current = true
       dispatch(setSpeaking(true))
-      const resumeMic = isMobileDevice() ? pauseMicForSpeech() : null
-      if (!resumeMic) stopRecognition()
+      let resumeMic = null
+      if (isMobileDevice()) {
+        resumeMic = await pauseMicForSpeech()
+      } else {
+        stopRecognition()
+      }
       echoGuardUntilRef.current = Date.now() + estimateEchoCooldownMs(spoken, 400)
 
       try {
@@ -238,7 +245,7 @@ const FreeAssistantHome = () => {
           toast.error(msg, { duration: 5000 })
         }
       } finally {
-        resumeMic?.()
+        if (resumeMic) await resumeMic()
         speakingRef.current = false
         dispatch(setSpeaking(false))
         echoGuardUntilRef.current = Date.now() + estimateEchoCooldownMs(spoken, 500)
@@ -475,7 +482,7 @@ const FreeAssistantHome = () => {
     resetVoiceSessionRefs()
 
     if (!hasBrainReady() && getActiveProviderInfo().id !== 'keyword') {
-      toast.error('Settings → AI Brain → pick FreeLLMAPI or Basic mode.', { duration: 8000 })
+      toast.error('Brain not linked yet. Pull down to refresh the page — Gemini should auto-connect.', { duration: 8000 })
       setSettingsOpen(true)
       return
     }
@@ -495,9 +502,14 @@ const FreeAssistantHome = () => {
     commandGenerationRef.current = 0
 
     try {
-      await unlockAudioPlayback()
-      const stream = await requestMicrophoneAccess({ required: true })
-      micGrantedRef.current = Boolean(stream)
+      await primeAudioForSession()
+      if (useWhisper || !isIOSDevice()) {
+        const stream = await requestMicrophoneAccess({ required: true })
+        micGrantedRef.current = Boolean(stream)
+      } else {
+        micGrantedRef.current = true
+      }
+      void warmUpEdgeTts()
       void warmUpChatterbox()
     } catch (e) {
       micGrantedRef.current = false

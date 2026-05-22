@@ -5,12 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { edgeTtsPlugin } from './vite-plugins/edgeTtsPlugin.js'
 import { chatterboxTtsPlugin } from './vite-plugins/chatterboxTtsPlugin.js'
 import { freellmapiBrainPlugin } from './vite-plugins/freellmapiBrainPlugin.js'
+import { ollamaBrainPlugin } from './vite-plugins/ollamaBrainPlugin.js'
 import { geminiBrainPlugin } from './vite-plugins/geminiBrainPlugin.js'
 
 export default defineConfig(({ command }) => {
   const devPlugins =
     command === 'serve'
-      ? [basicSsl(), edgeTtsPlugin(), chatterboxTtsPlugin(), freellmapiBrainPlugin(), geminiBrainPlugin()]
+      ? [basicSsl(), edgeTtsPlugin(), chatterboxTtsPlugin(), freellmapiBrainPlugin(), ollamaBrainPlugin(), geminiBrainPlugin()]
       : []
 
   return {

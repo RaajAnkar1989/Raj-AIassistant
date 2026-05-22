@@ -5,6 +5,9 @@ import {
   setProviderApiKey,
   sanitizeApiKey,
   getProviderApiKey,
+  resolveBrainConfig,
+  canUseFreeLLMAPI,
+  canUseGemini,
 } from '../constants/aiProviders'
 
 const SYNC_CACHE_KEY = 'raj_freellmapi_sync_at'
@@ -38,6 +41,7 @@ function getAdminBaseUrl() {
 }
 
 function applyEnvFreeLLMAPIKey() {
+  if (!canUseFreeLLMAPI()) return null
   const envKey = sanitizeApiKey(import.meta.env.VITE_FREELLMAPI_KEY)
   if (!envKey?.startsWith('freellmapi-')) return null
   setProviderApiKey('freellmapi', envKey)
@@ -82,6 +86,31 @@ async function fetchJson(path) {
 
 /** Pull unified key (+ provider key count) from env, hosted FreeLLMAPI, or local dev. */
 export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
+  resolveBrainConfig({ persist: true })
+
+  if (canUseGemini() && !canUseFreeLLMAPI()) {
+    return {
+      apiKey: getProviderApiKey('gemini'),
+      providerKeyCount: null,
+      cached: false,
+      fromEnv: Boolean(import.meta.env.VITE_GEMINI_API_KEY?.trim()),
+      provider: 'gemini',
+    }
+  }
+
+  // Hosted Raj uses Gemini env — never probe localhost FreeLLMAPI on phones.
+  if (import.meta.env.PROD && !canUseFreeLLMAPI()) {
+    resolveBrainConfig({ persist: true })
+    return {
+      apiKey: getProviderApiKey(getBrainProvider()) || '',
+      providerKeyCount: null,
+      cached: false,
+      fromEnv: false,
+      provider: getBrainProvider(),
+      skipped: true,
+    }
+  }
+
   const envKey = applyEnvFreeLLMAPIKey()
   if (envKey) {
     return { apiKey: envKey, providerKeyCount: null, cached: false, fromEnv: true }
@@ -127,9 +156,19 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
 
   const unified = sanitizeApiKey(apiKey)
   if (!unified.startsWith('freellmapi-')) {
+    if (canUseGemini()) {
+      resolveBrainConfig({ persist: true })
+      return {
+        apiKey: getProviderApiKey('gemini'),
+        providerKeyCount: null,
+        cached: false,
+        fromEnv: Boolean(import.meta.env.VITE_GEMINI_API_KEY?.trim()),
+        provider: 'gemini',
+      }
+    }
     throw new Error(
       import.meta.env.PROD
-        ? 'FreeLLMAPI not linked. Add VITE_FREELLMAPI_URL and VITE_FREELLMAPI_KEY in Netlify env vars.'
+        ? 'Brain not linked yet. Pull down to refresh — Gemini should connect automatically.'
         : 'FreeLLMAPI not reachable or no unified key found. Run npm run dev.'
     )
   }

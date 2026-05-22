@@ -9,6 +9,9 @@
     "setup:local": "node scripts/ensure-local-services.mjs",
     "chatterbox": "bash scripts/start-chatterbox.sh",
     "freellmapi": "bash scripts/start-freellmapi.sh",
+    "sync:netlify-env": "node scripts/sync-netlify-env.mjs",
+    "tunnel:ollama": "node scripts/tunnel-ollama.mjs",
+    "sync:ollama-netlify": "node scripts/sync-ollama-netlify.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"

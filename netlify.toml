@@ -15,6 +15,15 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/brain/ollama/*"
+  to = "/.netlify/functions/ollama-brain/:splat"
+  status = 200
+  force = true
+
+[functions."ollama-brain"]
+  timeout = 26
+
 [[headers]]
   for = "/*"
   [headers.values]

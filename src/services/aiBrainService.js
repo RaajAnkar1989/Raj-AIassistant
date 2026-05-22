@@ -4,6 +4,9 @@ import {
   getBrainProvider,
   getProviderApiKey,
   hasBrainReady,
+  resolveBrainConfig,
+  canUseGemini,
+  canUseOllama,
 } from '../constants/aiProviders'
 import { formatBrainError, formatOpenAIError, isOpenAIQuotaError, markQuotaExceeded } from '../utils/openaiErrors'
 
@@ -18,7 +21,13 @@ const GEMINI_MODEL_FALLBACKS = [
 function getFreeLLMAPIBaseUrl() {
   if (import.meta.env.DEV) return '/api/brain/freellmapi'
   const configured = import.meta.env.VITE_FREELLMAPI_URL?.trim()
-  return configured || 'http://127.0.0.1:3001/v1'
+  if (configured) return configured.replace(/\/$/, '')
+  return ''
+}
+
+function getOllamaBaseUrl() {
+  if (canUseOllama()) return '/api/brain/ollama'
+  return ''
 }
 
 import { contactsPromptHint } from '../services/contactResolver'
@@ -109,6 +118,10 @@ function shouldTryDirectAfterProxy(message) {
 }
 
 async function callFreeLLMAPI(command, apiKey, model) {
+  const base = getFreeLLMAPIBaseUrl()
+  if (!base) {
+    throw new Error('FreeLLMAPI is local-only. Hosted Raj uses Gemini automatically.')
+  }
   const history = loadHistory()
   const messages = [
     { role: 'system', content: buildSystemPrompt() },
@@ -116,7 +129,7 @@ async function callFreeLLMAPI(command, apiKey, model) {
     { role: 'user', content: command },
   ]
 
-  const res = await fetch(`${getFreeLLMAPIBaseUrl()}/chat/completions`, {
+  const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -139,6 +152,38 @@ async function callFreeLLMAPI(command, apiKey, model) {
 
   const data = await res.json()
   return parseJsonContent(data.choices?.[0]?.message?.content)
+}
+
+async function callOllama(command, model) {
+  const base = getOllamaBaseUrl()
+  if (!base) {
+    throw new Error('Ollama is local-only. On your Mac run: npm run dev')
+  }
+
+  const history = loadHistory()
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: model || 'qwen2.5:7b',
+      messages: [
+        { role: 'system', content: buildSystemPrompt() },
+        ...history,
+        { role: 'user', content: command },
+      ],
+      stream: false,
+      format: 'json',
+      options: { temperature: 0.35, num_predict: 220 },
+    }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg = data?.error || `Ollama failed (${res.status})`
+    throw new Error(formatBrainError(msg, 'ollama'))
+  }
+
+  return parseJsonContent(data.message?.content)
 }
 
 async function callGeminiDirect(command, apiKey, model, history) {
@@ -307,24 +352,48 @@ class AiBrainService {
   }
 
   async processCommand(command) {
-    const provider = getBrainProvider()
+    resolveBrainConfig({ persist: true })
+    let provider = getBrainProvider()
     if (provider === 'keyword') {
       throw new Error('KEYWORD_ONLY')
     }
 
-    const apiKey = getProviderApiKey(provider)
-    if (!apiKey) {
-      throw new Error(`Add your free ${provider} API key in Settings, or switch to Basic (free) mode.`)
+    let apiKey = getProviderApiKey(provider)
+    if (provider !== 'ollama' && !apiKey && canUseGemini()) {
+      resolveBrainConfig({ persist: true })
+      provider = getBrainProvider()
+      apiKey = getProviderApiKey(provider)
+    }
+    if (provider !== 'ollama' && provider !== 'keyword' && !apiKey) {
+      throw new Error(`Add your free ${provider} API key in Settings, or switch to Ollama (local) mode.`)
     }
 
     const model = getBrainModel()
     let parsed
 
-    if (provider === 'freellmapi') parsed = await callFreeLLMAPI(command, apiKey, model)
-    else if (provider === 'gemini') parsed = await callGemini(command, apiKey, model)
-    else if (provider === 'groq') parsed = await callGroq(command, apiKey, model)
-    else if (provider === 'openai') parsed = await callOpenAI(command, apiKey, model)
-    else throw new Error('Unknown AI provider')
+    try {
+      if (provider === 'ollama') parsed = await callOllama(command, model)
+      else if (provider === 'freellmapi') parsed = await callFreeLLMAPI(command, apiKey, model)
+      else if (provider === 'gemini') parsed = await callGemini(command, apiKey, model)
+      else if (provider === 'groq') parsed = await callGroq(command, apiKey, model)
+      else if (provider === 'openai') parsed = await callOpenAI(command, apiKey, model)
+      else throw new Error('Unknown AI provider')
+    } catch (e) {
+      if (provider === 'freellmapi' && canUseOllama()) {
+        console.warn('[Raj] FreeLLMAPI unavailable, using Ollama:', e?.message)
+        parsed = await callOllama(command, model)
+      } else if (provider === 'freellmapi' && canUseGemini()) {
+        const geminiKey = getProviderApiKey('gemini')
+        if (geminiKey) {
+          console.warn('[Raj] FreeLLMAPI unavailable, using Gemini:', e?.message)
+          parsed = await callGemini(command, geminiKey, getBrainModel())
+        } else {
+          throw e
+        }
+      } else {
+        throw e
+      }
+    }
 
     if (!parsed?.intent) throw new Error('AI returned an invalid response')
     saveHistory(command, parsed)

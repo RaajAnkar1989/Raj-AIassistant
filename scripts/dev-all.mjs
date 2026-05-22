@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-/** One command: Raj app + Chatterbox voice + FreeLLMAPI brain. */
+/** One command: Raj app + Chatterbox voice + Ollama brain (local). FreeLLMAPI optional fallback. */
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureFreeLLMAPI, hasChatterbox, hasFreeLLMAPI } from './ensure-local-services.mjs'
 import { discoverFreeLLMAPI, isFreeLLMAPIRunning } from './discover-freellmapi.mjs'
+import { discoverOllama } from './discover-ollama.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FREELLM_DIR = path.join(ROOT, 'tools/freellmapi')
@@ -79,13 +80,20 @@ async function main() {
   }
 
   const brainPort = new URL(freellmapiBaseUrl).port || '3001'
+  const ollama = skipLocal ? { running: false, models: [], model: 'qwen2.5:7b' } : await discoverOllama()
 
   console.log('')
   console.log('  Raj local stack')
   console.log('  ─────────────────────────────────────')
   console.log('  App (UI):     https://localhost:3002')
   console.log('  Voice API:    http://127.0.0.1:8765  (Chatterbox)')
-  console.log(`  Brain API:    ${freellmapiBaseUrl}/v1`)
+  if (ollama.running) {
+    console.log(`  Brain (AI):   Ollama · ${ollama.model} · ${ollama.models.length} model(s)`)
+    console.log('  Phone/Netlify: npm run tunnel:ollama  →  npm run sync:ollama-netlify')
+  } else {
+    console.log('  Brain (AI):   Ollama — run: ollama serve  (then: ollama pull qwen2.5:7b)')
+  }
+  console.log(`  Brain alt:    ${freellmapiBaseUrl}/v1  (FreeLLMAPI — optional)`)
   console.log(`  Brain admin:  ${freellmapiBaseUrl}  (or localhost:5173/keys)`)
   console.log('  Skip locals:  RAJ_LOCAL_SERVICES=0 npm run dev')
   console.log('')

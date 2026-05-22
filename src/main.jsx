@@ -5,14 +5,15 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { Toaster } from 'react-hot-toast'
 
-import { migrateBrainSettings, getBrainProvider } from './constants/aiProviders'
+import { migrateBrainSettings, getBrainProvider, resolveBrainConfig } from './constants/aiProviders'
 import { clearQuotaExceededCache } from './utils/openaiErrors'
 import { syncFreeLLMAPIFromLocal } from './services/freellmapiSync'
+import { syncOllamaFromLocal } from './services/ollamaSync'
 import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '2-jarvis-voice'
+const APP_SHELL_VERSION = '6-ollama-netlify'
 
 /** Old PWA/service worker caches served the dashboard UI — clear them once. */
 async function migrateAppShell() {
@@ -62,12 +63,23 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
 async function boot() {
   migrateBrainSettings()
+  resolveBrainConfig({ persist: true })
   if (getBrainProvider() !== 'openai') clearQuotaExceededCache()
 
-  try {
-    await syncFreeLLMAPIFromLocal()
-  } catch {
-    // Hosted env may use VITE_GEMINI_API_KEY instead — applyBuiltInBrainConfig already ran
+  if (import.meta.env.DEV || import.meta.env.VITE_OLLAMA_ENABLED === '1' || import.meta.env.VITE_OLLAMA_ENABLED === 'true') {
+    try {
+      await syncOllamaFromLocal()
+    } catch {
+      // Ollama/tunnel may start after the app — run: ollama serve && npm run tunnel:ollama
+    }
+  }
+
+  if (import.meta.env.DEV) {
+    try {
+      await syncFreeLLMAPIFromLocal()
+    } catch {
+      // Local dev may start before FreeLLMAPI is up.
+    }
   }
 
   const ok = await migrateAppShell()

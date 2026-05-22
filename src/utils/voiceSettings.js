@@ -130,7 +130,12 @@ export function migrateVoiceSettings() {
     }
   }
 
-  if (pro.ttsEngine === 'edge' && (isMobileDevice() || !import.meta.env.DEV)) {
+  if (pro.ttsEngine === 'chatterbox' && !import.meta.env.DEV) {
+    pro.ttsEngine = 'edge'
+    changed = true
+  }
+
+  if (pro.ttsEngine === 'edge' && isMobileDevice() && import.meta.env.DEV) {
     pro.ttsEngine = 'chatterbox'
     changed = true
   }

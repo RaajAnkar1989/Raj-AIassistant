@@ -45,13 +45,22 @@ VITE_GEMINI_API_KEY=AIza...
 
 ### 3. Netlify environment variables
 
+**Easiest — sync from your Mac (encrypted on Netlify):**
+
+```bash
+npx netlify login          # once
+npm run sync:netlify-env   # pulls Gemini key from local FreeLLMAPI + .env
+```
+
+This pushes secrets with `--secret` (encrypted at rest on Netlify). Re-run anytime local keys change.
+
 | Variable | Required for |
 |----------|----------------|
-| `VITE_GOOGLE_CLIENT_ID` | Gmail / Calendar |
-| `VITE_FREELLMAPI_URL` + `VITE_FREELLMAPI_KEY` | Auto brain (FreeLLMAPI) |
-| `VITE_GEMINI_API_KEY` | Brain fallback |
+| `VITE_GOOGLE_CLIENT_ID` | Gmail / Calendar (add to `.env` if not in FreeLLMAPI) |
+| `VITE_GEMINI_API_KEY` | Brain on Netlify (auto-synced from local FreeLLMAPI) |
+| `VITE_FREELLMAPI_URL` + `VITE_FREELLMAPI_KEY` | Full FreeLLMAPI routing (needs public brain server) |
 
-Then **Deploy → Clear cache and deploy**.
+Then **Deploy → Clear cache and deploy** (or let `sync:netlify-env` trigger deploy).
 
 ### 4. Google OAuth
 

@@ -1,3 +1,4 @@
+import { resolveBrainConfig } from '../../constants/aiProviders'
 import ttsService, { unlockAudioPlayback } from '../../services/ttsService'
 import {
   getTtsOptions,
@@ -100,6 +101,7 @@ export const processVoiceCommand = createAsyncThunk(
       }
 
       const provider = aiBrainService.getProvider()
+      resolveBrainConfig({ persist: true })
 
       const batteryReport = parseBatteryReport(command)
       if (batteryReport) {
