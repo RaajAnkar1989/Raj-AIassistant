@@ -42,6 +42,7 @@ import {
   sanitizeApiKey,
 } from '../constants/aiProviders'
 import { clearBrainHistory } from '../services/aiBrainService'
+import { getMemoryStats } from '../services/brainMemoryService'
 import { clearRajSession } from '../services/actionRouter'
 import { syncFreeLLMAPIFromLocal } from '../services/freellmapiSync'
 import { syncOllamaFromLocal, getCachedOllamaModels } from '../services/ollamaSync'
@@ -61,7 +62,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
   const [connectionType, setConnectionType] = useState('websocket')
   const [voiceBackend, setVoiceBackendChoice] = useState('free')
   const [brainProvider, setBrainProviderChoice] = useState('ollama')
-  const [brainModel, setBrainModelChoice] = useState('qwen2.5:7b')
+  const [brainModel, setBrainModelChoice] = useState('llama3.1:8b')
   const [brainApiKey, setBrainApiKey] = useState('')
   const [googleId, setGoogleId] = useState('')
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false })
@@ -70,6 +71,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
   const [testingBrain, setTestingBrain] = useState(false)
   const [freellmLinked, setFreellmLinked] = useState(null)
   const [ollamaLinked, setOllamaLinked] = useState(null)
+  const [memoryStats, setMemoryStats] = useState(null)
   const [oauthOrigins, setOauthOrigins] = useState([])
   const [ttsEngine, setTtsEngine] = useState('auto')
   const [neuralVoice, setNeuralVoice] = useState(DEFAULT_FREE_VOICE)
@@ -109,6 +111,10 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
         })
         .catch(() => setOllamaLinked(null))
     }
+
+    getMemoryStats()
+      .then(setMemoryStats)
+      .catch(() => setMemoryStats(null))
 
     if (getBrainProvider() === 'freellmapi' && canUseFreeLLMAPI()) {
       syncFreeLLMAPIFromLocal()
@@ -150,7 +156,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
         const linked = await syncOllamaFromLocal({ force: true })
         setOllamaLinked(linked.running ? { models: linked.models } : null)
         if (!linked.running) {
-          toast.error('Ollama not running. In Terminal: ollama serve — then: ollama pull qwen2.5:7b')
+          toast.error('Ollama not running. In Terminal: ollama serve — then: ollama pull llama3.1:8b')
           return
         }
         setBrainModelChoice(linked.model)
@@ -184,7 +190,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
         setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
       }
       if (brainProvider !== 'openai') clearQuotaExceededCache()
-      clearBrainHistory()
+      await clearBrainHistory()
 
       const { default: aiBrainService } = await import('../services/aiBrainService')
       const reply = await aiBrainService.testBrain()
@@ -447,7 +453,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
             <Typography variant="caption" sx={{ color: ollamaLinked ? '#4ade80' : '#fbbf24', display: 'block', lineHeight: 1.45 }}>
               {ollamaLinked
                 ? `Ollama running · ${ollamaLinked.models?.length || 0} model(s) installed · no API key needed`
-                : 'Start Ollama: ollama serve — then pull Qwen: ollama pull qwen2.5:7b'}
+                : 'Start Ollama: ollama serve — then: ollama pull llama3.1:8b'}
             </Typography>
           </Box>
         ) : brainProvider !== 'keyword' ? (
@@ -528,17 +534,24 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
           </Typography>
         )}
 
+        <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1, lineHeight: 1.45 }}>
+          {memoryStats
+            ? `Memory: ${memoryStats.messageCount} messages (${memoryStats.userCount} from you) · ${memoryStats.source === 'file' ? 'saved in data/raj-memory/' : 'saved in this browser'}`
+            : 'Memory: loads from data/raj-memory/ on Mac (browser backup on phone)'}
+        </Typography>
+
         <Button
           size="small"
           variant="text"
-          onClick={() => {
-            clearBrainHistory()
+          onClick={async () => {
+            await clearBrainHistory()
             clearRajSession()
-            toast.success('Conversation & action memory cleared')
+            setMemoryStats(await getMemoryStats().catch(() => null))
+            toast.success('All memory deleted')
           }}
-          sx={{ mb: 2, color: '#64748b', textTransform: 'none' }}
+          sx={{ mb: 2, color: '#f87171', textTransform: 'none' }}
         >
-          Clear chat memory
+          Delete all memory
         </Button>
 
         <Typography variant="caption" sx={{ color: '#64748b', mb: 1, display: 'block' }}>

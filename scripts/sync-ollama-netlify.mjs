@@ -15,8 +15,9 @@ import { discoverOllama } from './discover-ollama.mjs'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const DEFAULT_SITE = process.env.NETLIFY_SITE_NAME || 'raaj-jarvis'
 const TUNNEL_FILE = path.join(ROOT, '.ollama-tunnel-url')
+const MEMORY_TUNNEL_FILE = path.join(ROOT, '.raj-memory-tunnel-url')
 
-const SECRET_KEYS = new Set(['OLLAMA_URL', 'VITE_GEMINI_API_KEY', 'VITE_FREELLMAPI_KEY'])
+const SECRET_KEYS = new Set(['OLLAMA_URL', 'RAJ_MEMORY_URL', 'VITE_GEMINI_API_KEY', 'VITE_FREELLMAPI_KEY'])
 
 function runNetlify(args, { inherit = false } = {}) {
   return spawnSync('npx', ['--yes', 'netlify-cli@17', ...args], {
@@ -38,6 +39,13 @@ function ensureNetlifyLinked() {
   if (/Linked to/i.test(out) || /Site URL/i.test(out)) return true
   console.log(`Linking Netlify site "${DEFAULT_SITE}"…`)
   return runNetlify(['link', '--name', DEFAULT_SITE], { inherit: true }).status === 0
+}
+
+function readMemoryTunnelUrl() {
+  const fromEnv = process.env.RAJ_MEMORY_TUNNEL_URL?.trim() || process.env.RAJ_MEMORY_URL?.trim()
+  if (fromEnv) return fromEnv.replace(/\/$/, '')
+  if (!existsSync(MEMORY_TUNNEL_FILE)) return ''
+  return readFileSync(MEMORY_TUNNEL_FILE, 'utf8').trim().replace(/\/$/, '')
 }
 
 function readTunnelUrl() {
@@ -83,16 +91,20 @@ async function main() {
   }
 
   const model = process.env.VITE_OLLAMA_MODEL?.trim() || ollama.model
+  const memoryUrl = readMemoryTunnelUrl()
   const vars = {
     OLLAMA_URL: tunnelUrl,
     VITE_OLLAMA_ENABLED: '1',
     VITE_OLLAMA_MODEL: model,
   }
+  if (memoryUrl) vars.RAJ_MEMORY_URL = memoryUrl
 
   console.log('\nPushing to Netlify production:')
   console.log(`  OLLAMA_URL=${tunnelUrl}`)
   console.log(`  VITE_OLLAMA_MODEL=${model}`)
-  console.log('  VITE_OLLAMA_ENABLED=1\n')
+  console.log('  VITE_OLLAMA_ENABLED=1')
+  if (memoryUrl) console.log(`  RAJ_MEMORY_URL=${memoryUrl}`)
+  console.log('')
 
   if (!isNetlifyLoggedIn()) {
     console.log('Netlify CLI not logged in. Run: npx netlify login')

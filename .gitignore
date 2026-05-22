@@ -23,6 +23,8 @@ build/
 .env.local
 .env.netlify
 .ollama-tunnel-url
+.raj-memory-tunnel-url
+data/raj-memory/*.json
 .env.development.local
 .env.test.local
 .env.production.local

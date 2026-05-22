@@ -29,7 +29,7 @@ export function formatBrainError(message, provider = 'openai') {
         : 'Ollama is not running. In Terminal run: ollama serve'
     }
     if (/model.*not found|does not exist/i.test(msg)) {
-      return 'Model not installed. Run: ollama pull qwen2.5:7b (or pick an installed model in Settings)'
+      return 'Model not installed. Run: ollama pull llama3.1:8b (or pick an installed model in Settings)'
     }
     return msg || 'Ollama request failed'
   }

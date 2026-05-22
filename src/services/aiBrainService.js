@@ -1,5 +1,4 @@
 import {
-  BRAIN_HISTORY_KEY,
   getBrainModel,
   getBrainProvider,
   getProviderApiKey,
@@ -9,8 +8,14 @@ import {
   canUseOllama,
 } from '../constants/aiProviders'
 import { formatBrainError, formatOpenAIError, isOpenAIQuotaError, markQuotaExceeded } from '../utils/openaiErrors'
+import {
+  appendBrainExchange,
+  clearAllBrainMemory,
+  loadContextMessages,
+  loadLongTermMemoryBlock,
+} from './brainMemoryService'
 
-const MAX_HISTORY_TURNS = 4
+const MAX_HISTORY_TURNS = 50
 
 const GEMINI_MODEL_FALLBACKS = [
   'gemini-2.0-flash-lite',
@@ -57,30 +62,25 @@ Examples:
 {"intent":"read_emails"}
 {"intent":"general_chat","responseText":"Good evening. How can I help?"}`
 
-function buildSystemPrompt() {
+async function buildSystemPrompt() {
   const contacts = contactsPromptHint()
-  return `${RAJ_BRAIN_PROMPT}${contacts ? `\n\nKNOWN CONTACTS (use these emails/phones when matched):\n${contacts}` : ''}`
+  const memory = await loadLongTermMemoryBlock()
+  const memorySection = memory
+    ? `\n\nLONG-TERM MEMORY (everything the user told you before — use for follow-ups and preferences):\n${memory}`
+    : ''
+  return `${RAJ_BRAIN_PROMPT}${memorySection}${contacts ? `\n\nKNOWN CONTACTS (use these emails/phones when matched):\n${contacts}` : ''}`
 }
 
-function loadHistory() {
-  try {
-    const raw = sessionStorage.getItem(BRAIN_HISTORY_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
+async function loadHistory() {
+  return loadContextMessages(MAX_HISTORY_TURNS)
 }
 
-function saveHistory(userText, payload) {
-  const history = loadHistory()
-  history.push({ role: 'user', content: userText })
-  history.push({ role: 'assistant', content: JSON.stringify(payload) })
-  sessionStorage.setItem(BRAIN_HISTORY_KEY, JSON.stringify(history.slice(-MAX_HISTORY_TURNS * 2)))
+async function saveHistory(userText, payload) {
+  await appendBrainExchange(userText, payload)
 }
 
-export function clearBrainHistory() {
-  sessionStorage.removeItem(BRAIN_HISTORY_KEY)
+export async function clearBrainHistory() {
+  await clearAllBrainMemory()
 }
 
 function parseJsonContent(text) {
@@ -122,9 +122,9 @@ async function callFreeLLMAPI(command, apiKey, model) {
   if (!base) {
     throw new Error('FreeLLMAPI is local-only. Hosted Raj uses Gemini automatically.')
   }
-  const history = loadHistory()
+  const [history, systemPrompt] = await Promise.all([loadHistory(), buildSystemPrompt()])
   const messages = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: systemPrompt },
     ...history,
     { role: 'user', content: command },
   ]
@@ -160,14 +160,14 @@ async function callOllama(command, model) {
     throw new Error('Ollama is local-only. On your Mac run: npm run dev')
   }
 
-  const history = loadHistory()
+  const [history, systemPrompt] = await Promise.all([loadHistory(), buildSystemPrompt()])
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: model || 'qwen2.5:7b',
+      model: model || 'llama3.1:8b',
       messages: [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: systemPrompt },
         ...history,
         { role: 'user', content: command },
       ],
@@ -186,13 +186,13 @@ async function callOllama(command, model) {
   return parseJsonContent(data.message?.content)
 }
 
-async function callGeminiDirect(command, apiKey, model, history) {
+async function callGeminiDirect(command, apiKey, model, history, systemPrompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: buildGeminiContents(history, command),
       generationConfig: {
         temperature: 0.4,
@@ -210,7 +210,7 @@ async function callGeminiDirect(command, apiKey, model, history) {
   return parseJsonContent(text)
 }
 
-async function callGeminiProxy(command, apiKey, model, history) {
+async function callGeminiProxy(command, apiKey, model, history, systemPrompt) {
   const res = await fetch('/api/brain/gemini', {
     method: 'POST',
     headers: {
@@ -221,7 +221,7 @@ async function callGeminiProxy(command, apiKey, model, history) {
       command,
       model,
       history,
-      systemPrompt: buildSystemPrompt(),
+      systemPrompt,
     }),
   })
 
@@ -234,12 +234,12 @@ async function callGeminiProxy(command, apiKey, model, history) {
   return parseJsonContent(text)
 }
 
-async function callGeminiOnce(command, apiKey, model, history) {
+async function callGeminiOnce(command, apiKey, model, history, systemPrompt) {
   const useDevProxy = import.meta.env.DEV
 
   if (useDevProxy) {
     try {
-      return await callGeminiProxy(command, apiKey, model, history)
+      return await callGeminiProxy(command, apiKey, model, history, systemPrompt)
     } catch (proxyErr) {
       const msg = String(proxyErr.message || '')
       if (/failed to fetch|network error|load failed/i.test(msg)) {
@@ -252,17 +252,17 @@ async function callGeminiOnce(command, apiKey, model, history) {
     }
   }
 
-  return callGeminiDirect(command, apiKey, model, history)
+  return callGeminiDirect(command, apiKey, model, history, systemPrompt)
 }
 
 async function callGemini(command, apiKey, model) {
-  const history = loadHistory()
+  const [history, systemPrompt] = await Promise.all([loadHistory(), buildSystemPrompt()])
   const models = [model, ...GEMINI_MODEL_FALLBACKS.filter((m) => m !== model)]
   let lastError = null
 
   for (const candidateModel of models) {
     try {
-      return await callGeminiOnce(command, apiKey, candidateModel, history)
+      return await callGeminiOnce(command, apiKey, candidateModel, history, systemPrompt)
     } catch (e) {
       lastError = e
       if (!shouldRetryGeminiModel(e?.message)) break
@@ -274,9 +274,9 @@ async function callGemini(command, apiKey, model) {
 }
 
 async function callGroq(command, apiKey, model) {
-  const history = loadHistory()
+  const [history, systemPrompt] = await Promise.all([loadHistory(), buildSystemPrompt()])
   const messages = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: systemPrompt },
     ...history,
     { role: 'user', content: command },
   ]
@@ -306,9 +306,9 @@ async function callGroq(command, apiKey, model) {
 }
 
 async function callOpenAI(command, apiKey, model) {
-  const history = loadHistory()
+  const [history, systemPrompt] = await Promise.all([loadHistory(), buildSystemPrompt()])
   const messages = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: systemPrompt },
     ...history,
     { role: 'user', content: command },
   ]
@@ -396,7 +396,7 @@ class AiBrainService {
     }
 
     if (!parsed?.intent) throw new Error('AI returned an invalid response')
-    saveHistory(command, parsed)
+    await saveHistory(command, parsed)
     return parsed
   }
 

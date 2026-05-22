@@ -21,8 +21,17 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/memory/*"
+  to = "/.netlify/functions/memory-api/:splat"
+  status = 200
+  force = true
+
 [functions."ollama-brain"]
   timeout = 26
+
+[functions."memory-api"]
+  timeout = 10
 
 [[headers]]
   for = "/*"

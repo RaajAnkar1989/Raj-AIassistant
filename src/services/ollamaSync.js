@@ -44,14 +44,18 @@ export async function syncOllamaFromLocal({ force = false } = {}) {
     if (!res.ok) throw new Error('Ollama not reachable')
     const data = await res.json()
     const models = (data.models || []).map((m) => m.name).filter(Boolean)
-    const qwen = models.find((n) => /qwen/i.test(n))
+    const preferred =
+      models.find((n) => /^llama3\.1:8b$/i.test(n) || /llama3\.1.*8b/i.test(n)) ||
+      models.find((n) => /llama3\.1/i.test(n)) ||
+      models.find((n) => /llama3/i.test(n)) ||
+      models.find((n) => /qwen/i.test(n))
     const envModel = import.meta.env.VITE_OLLAMA_MODEL?.trim()
     const model =
       (envModel && models.includes(envModel) && envModel) ||
-      qwen ||
+      preferred ||
       models[0] ||
       envModel ||
-      'qwen2.5:7b'
+      'llama3.1:8b'
 
     try {
       sessionStorage.setItem(MODELS_KEY, JSON.stringify(models))
