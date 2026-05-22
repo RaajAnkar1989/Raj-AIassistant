@@ -33,11 +33,12 @@ import {
   getBrainProvider,
   getProviderApiKey,
   hasBrainReady,
-  resolveBrainConfig,
   canUseFreeLLMAPI,
   canUseGemini,
   setBrainModel,
   setBrainProvider,
+  setBrainUserChoice,
+  isBrainUserLocked,
   setProviderApiKey,
   sanitizeApiKey,
 } from '../constants/aiProviders'
@@ -80,7 +81,6 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
 
   useEffect(() => {
     if (!open) return
-    resolveBrainConfig({ persist: true })
     setElevenKey(localStorage.getItem('elevenlabs_api_key') || '')
     setAgentId(getElevenLabsAgentId())
     setSystemPrompt(localStorage.getItem('elevenlabs_system_prompt') || '')
@@ -101,12 +101,10 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
     if (import.meta.env.DEV) {
       syncOllamaFromLocal()
         .then(({ running, models, model }) => {
-          if (running) {
+          setOllamaLinked(running ? { models } : null)
+          if (running && !isBrainUserLocked()) {
             setBrainProviderChoice('ollama')
             setBrainModelChoice(model)
-            setOllamaLinked({ models })
-          } else {
-            setOllamaLinked(null)
           }
         })
         .catch(() => setOllamaLinked(null))
@@ -123,11 +121,6 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
           setFreellmLinked({ providerKeyCount })
         })
         .catch(() => setFreellmLinked(null))
-    } else if (canUseGemini()) {
-      setBrainProviderChoice('gemini')
-      setBrainModelChoice(getBrainModel())
-      setBrainApiKey(getProviderApiKey('gemini'))
-      setFreellmLinked(null)
     } else {
       setFreellmLinked(null)
     }
@@ -184,8 +177,10 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
         return
       }
 
-      setBrainProvider(brainProvider)
-      setBrainModel(brainProvider === 'freellmapi' ? 'auto' : brainModel)
+      setBrainUserChoice(
+        brainProvider,
+        brainProvider === 'freellmapi' ? 'auto' : brainModel,
+      )
       if (brainProvider !== 'ollama') {
         setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
       }
@@ -220,8 +215,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
       }
       saveVoicePro(pro)
     } catch {}
-    setBrainProvider(brainProvider)
-    setBrainModel(brainProvider === 'freellmapi' ? 'auto' : brainModel)
+    setBrainUserChoice(brainProvider, brainProvider === 'freellmapi' ? 'auto' : brainModel)
     if (brainProvider !== 'keyword' && brainProvider !== 'ollama') {
       setProviderApiKey(brainProvider, sanitizeApiKey(brainApiKey))
     }

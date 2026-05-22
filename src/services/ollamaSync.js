@@ -2,8 +2,8 @@ import {
   getBrainModel,
   setBrainModel,
   setBrainProvider,
-  resolveBrainConfig,
   canUseOllama,
+  isBrainUserLocked,
 } from '../constants/aiProviders'
 
 const CACHE_KEY = 'raj_ollama_sync_at'
@@ -63,9 +63,10 @@ export async function syncOllamaFromLocal({ force = false } = {}) {
       sessionStorage.setItem('raj_ollama_running', '1')
     } catch {}
 
-    setBrainProvider('ollama')
-    setBrainModel(model)
-    resolveBrainConfig({ persist: true })
+    if (!isBrainUserLocked()) {
+      setBrainProvider('ollama')
+      setBrainModel(model)
+    }
 
     return { running: true, models, model, cached: false }
   } catch {

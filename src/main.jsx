@@ -5,7 +5,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { Toaster } from 'react-hot-toast'
 
-import { migrateBrainSettings, getBrainProvider, resolveBrainConfig } from './constants/aiProviders'
+import { migrateBrainSettings, getBrainProvider, resolveBrainConfig, isBrainUserLocked } from './constants/aiProviders'
 import { clearQuotaExceededCache } from './utils/openaiErrors'
 import { syncFreeLLMAPIFromLocal } from './services/freellmapiSync'
 import { syncOllamaFromLocal } from './services/ollamaSync'
@@ -13,7 +13,7 @@ import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '6-ollama-netlify'
+const APP_SHELL_VERSION = '7-brain-persist'
 
 /** Old PWA/service worker caches served the dashboard UI — clear them once. */
 async function migrateAppShell() {
@@ -63,7 +63,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
 async function boot() {
   migrateBrainSettings()
-  resolveBrainConfig({ persist: true })
+  resolveBrainConfig({ persist: !isBrainUserLocked() })
   if (getBrainProvider() !== 'openai') clearQuotaExceededCache()
 
   if (import.meta.env.DEV || import.meta.env.VITE_OLLAMA_ENABLED === '1' || import.meta.env.VITE_OLLAMA_ENABLED === 'true') {

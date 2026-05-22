@@ -3,7 +3,6 @@ import {
   getBrainProvider,
   getProviderApiKey,
   hasBrainReady,
-  resolveBrainConfig,
   canUseGemini,
   canUseOllama,
 } from '../constants/aiProviders'
@@ -352,23 +351,17 @@ class AiBrainService {
   }
 
   async processCommand(command) {
-    resolveBrainConfig({ persist: true })
     let provider = getBrainProvider()
     if (provider === 'keyword') {
       throw new Error('KEYWORD_ONLY')
     }
 
     let apiKey = getProviderApiKey(provider)
-    if (provider !== 'ollama' && !apiKey && canUseGemini()) {
-      resolveBrainConfig({ persist: true })
-      provider = getBrainProvider()
-      apiKey = getProviderApiKey(provider)
-    }
     if (provider !== 'ollama' && provider !== 'keyword' && !apiKey) {
       throw new Error(`Add your free ${provider} API key in Settings, or switch to Ollama (local) mode.`)
     }
 
-    const model = getBrainModel()
+    const model = getBrainModel(provider)
     let parsed
 
     try {
@@ -379,7 +372,15 @@ class AiBrainService {
       else if (provider === 'openai') parsed = await callOpenAI(command, apiKey, model)
       else throw new Error('Unknown AI provider')
     } catch (e) {
-      if (provider === 'freellmapi' && canUseOllama()) {
+      if (provider === 'ollama' && canUseGemini()) {
+        const geminiKey = getProviderApiKey('gemini')
+        if (geminiKey) {
+          console.warn('[Raj] Ollama unavailable, using Gemini fallback:', e?.message)
+          parsed = await callGemini(command, geminiKey, getBrainModel('gemini'))
+        } else {
+          throw e
+        }
+      } else if (provider === 'freellmapi' && canUseOllama()) {
         console.warn('[Raj] FreeLLMAPI unavailable, using Ollama:', e?.message)
         parsed = await callOllama(command, model)
       } else if (provider === 'freellmapi' && canUseGemini()) {

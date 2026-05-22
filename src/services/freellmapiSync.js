@@ -8,6 +8,7 @@ import {
   resolveBrainConfig,
   canUseFreeLLMAPI,
   canUseGemini,
+  isBrainUserLocked,
 } from '../constants/aiProviders'
 
 const SYNC_CACHE_KEY = 'raj_freellmapi_sync_at'
@@ -41,7 +42,7 @@ function getAdminBaseUrl() {
 }
 
 function applyEnvFreeLLMAPIKey() {
-  if (!canUseFreeLLMAPI()) return null
+  if (!canUseFreeLLMAPI() || isBrainUserLocked()) return null
   const envKey = sanitizeApiKey(import.meta.env.VITE_FREELLMAPI_KEY)
   if (!envKey?.startsWith('freellmapi-')) return null
   setProviderApiKey('freellmapi', envKey)
@@ -86,7 +87,9 @@ async function fetchJson(path) {
 
 /** Pull unified key (+ provider key count) from env, hosted FreeLLMAPI, or local dev. */
 export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
-  resolveBrainConfig({ persist: true })
+  if (!isBrainUserLocked()) {
+    resolveBrainConfig({ persist: false })
+  }
 
   if (canUseGemini() && !canUseFreeLLMAPI()) {
     return {
@@ -100,7 +103,7 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
 
   // Hosted Raj uses Gemini env — never probe localhost FreeLLMAPI on phones.
   if (import.meta.env.PROD && !canUseFreeLLMAPI()) {
-    resolveBrainConfig({ persist: true })
+    resolveBrainConfig({ persist: !isBrainUserLocked() })
     return {
       apiKey: getProviderApiKey(getBrainProvider()) || '',
       providerKeyCount: null,
@@ -157,7 +160,7 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
   const unified = sanitizeApiKey(apiKey)
   if (!unified.startsWith('freellmapi-')) {
     if (canUseGemini()) {
-      resolveBrainConfig({ persist: true })
+      resolveBrainConfig({ persist: !isBrainUserLocked() })
       return {
         apiKey: getProviderApiKey('gemini'),
         providerKeyCount: null,
@@ -174,8 +177,10 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
   }
 
   setProviderApiKey('freellmapi', unified)
-  setBrainProvider('freellmapi')
-  setBrainModel('auto')
+  if (!isBrainUserLocked()) {
+    setBrainProvider('freellmapi')
+    setBrainModel('auto')
+  }
 
   try {
     sessionStorage.setItem(SYNC_CACHE_KEY, String(Date.now()))
