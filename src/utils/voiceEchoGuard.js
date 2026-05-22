@@ -57,6 +57,12 @@ export function buildActionKey(intent, aiData = {}) {
     const app = normalizeAppName(aiData.appName) || parseOpenAppCommand(`open ${aiData.appName || ''}`)
     return `open_app:${app || 'unknown'}`
   }
+  if (intent === 'tell_joke' || intent === 'sing_song' || intent === 'general_chat') {
+    return `${intent}:${Date.now()}`
+  }
+  if (intent === 'set_timer') {
+    return `${intent}:${aiData.durationSeconds || ''}:${Date.now()}`
+  }
   return intent || 'unknown'
 }
 

@@ -47,6 +47,7 @@ import JarvisHud from './JarvisHud'
 import { getTtsOptions } from '../utils/voiceSettings'
 import { isMobileDevice, isIOSDevice } from '../utils/device'
 import { useBatteryReminder } from '../hooks/useBatteryReminder'
+import { TIMER_DONE_EVENT } from '../services/timerService'
 import toast from 'react-hot-toast'
 
 const SPEECH_ERRORS = {
@@ -261,6 +262,16 @@ const FreeAssistantHome = () => {
   )
 
   useBatteryReminder({ speak: speakProactive, enabled: sessionActive })
+
+  useEffect(() => {
+    if (!sessionActive) return undefined
+    const onTimerDone = (event) => {
+      const message = event.detail?.message
+      if (message) speakProactive(message)
+    }
+    window.addEventListener(TIMER_DONE_EVENT, onTimerDone)
+    return () => window.removeEventListener(TIMER_DONE_EVENT, onTimerDone)
+  }, [sessionActive, speakProactive])
 
   const handleCommand = useCallback(
     async (command, cmdGen) => {

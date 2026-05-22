@@ -23,7 +23,7 @@ import {
   parseBatteryReport,
   reportBatteryLevel,
 } from '../../utils/batteryService'
-import { isIOSDevice } from '../../utils/device'
+import { parseUtilityCommand } from '../../services/utilityCommands'
 
 export const startVoiceRecognition = createAsyncThunk(
   'voice/startVoiceRecognition',
@@ -47,7 +47,14 @@ const FAST_INTENTS = new Set([
   'read_calendar',
   'read_emails',
   'help',
-  'general_chat',
+  'show_time',
+  'show_date',
+  'set_timer',
+  'cancel_timers',
+  'tell_joke',
+  'sing_song',
+  'calculate',
+  'open_reminders',
 ])
 const SESSION_INTENTS = new Set(['session_confirm', 'session_continue', 'session_cancel'])
 
@@ -62,9 +69,6 @@ function basicIntent(command) {
     return { intent: 'read_emails' }
   }
   if (/open calendar/.test(lower)) return { intent: 'open_calendar' }
-  if (/^(hi|hello|hey raj|good morning|good evening|good afternoon)\b/.test(lower)) {
-    return { intent: 'general_chat', responseText: 'Good to hear you. What shall I do?' }
-  }
   const appName = parseOpenAppCommand(lower)
   if (appName) return { intent: 'open_app', appName }
   if (/help|what can you/.test(lower)) return { intent: 'help' }
@@ -158,6 +162,11 @@ export const processVoiceCommand = createAsyncThunk(
         return buildCommandResult(command, 'open_app', media, false)
       }
 
+      const utility = parseUtilityCommand(command)
+      if (utility && (!utility.preferBrain || provider === 'keyword')) {
+        return buildCommandResult(command, utility.intent, utility, false)
+      }
+
       const pendingReply = parsePendingReply(command)
       if (pendingReply) {
         clearPendingAction()
@@ -197,7 +206,7 @@ export const processVoiceCommand = createAsyncThunk(
       }
 
       const quick = basicIntent(command)
-      let aiData = quick && FAST_INTENTS.has(quick.intent) ? quick : null
+      let aiData = quick && FAST_INTENTS.has(quick.intent) ? quick : utility?.preferBrain ? null : utility
 
       if (!aiData && provider !== 'keyword' && !parseMediaCommand(command)) {
         try {
@@ -206,7 +215,7 @@ export const processVoiceCommand = createAsyncThunk(
           if (e.message === 'KEYWORD_ONLY') {
             aiData = null
           } else {
-            const fallback = basicIntent(command) || messaging
+            const fallback = basicIntent(command) || parseUtilityCommand(command) || messaging
             if (fallback) {
               console.warn('AI brain failed, keyword fallback:', e.message)
               aiData = { ...fallback, quotaFallback: isOpenAIQuotaError(e.message) }
@@ -221,11 +230,11 @@ export const processVoiceCommand = createAsyncThunk(
       const intent = aiData?.intent || fallback?.intent || messaging?.intent || 'help'
       const merged = { ...fallback, ...messaging, ...aiData, intent }
 
-      if (provider === 'keyword' && !fallback && !messaging && !SESSION_INTENTS.has(intent)) {
+      if (provider === 'keyword' && !fallback && !messaging && !utility && !SESSION_INTENTS.has(intent)) {
         return buildCommandResult(command, 'help', {
           intent: 'help',
           responseText:
-            'Basic mode only understands simple commands like weather, open WhatsApp, or read my calendar. Switch to Gemini in Settings for natural conversation.',
+            'Basic mode understands weather, apps, time, timers, jokes, and calendar. Pick Ollama or Gemini in Settings for full conversation.',
         }, false)
       }
 

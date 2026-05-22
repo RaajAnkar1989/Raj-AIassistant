@@ -14,6 +14,18 @@ import {
   setPendingAction,
 } from '../utils/actionSession'
 import { format, parseISO, isToday, isTomorrow } from 'date-fns'
+import {
+  cancelVoiceTimers,
+  formatDuration,
+  parseDurationSeconds,
+  startVoiceTimer,
+} from './timerService'
+import {
+  formatCurrentDate,
+  formatCurrentTime,
+  pickLocalJoke,
+  pickSongSnippet,
+} from './utilityCommands'
 
 const IOS_SCHEMES = {
   whatsapp: 'whatsapp://',
@@ -623,6 +635,68 @@ export async function executeIntent(intent, aiData, speak) {
       }
       return
     }
+    case 'show_time': {
+      await speak(`It is ${formatCurrentTime()}.`)
+      return
+    }
+    case 'show_date': {
+      await speak(`Today is ${formatCurrentDate()}.`)
+      return
+    }
+    case 'set_timer': {
+      const seconds =
+        Number(d.durationSeconds) > 0
+          ? Number(d.durationSeconds)
+          : parseDurationSeconds(d.duration || d.label || '')
+      if (!seconds) {
+        await speak('How long should I set the timer for? Try five minutes.')
+        return
+      }
+      const label = (d.label || 'Timer').trim()
+      startVoiceTimer({ seconds, label })
+      const confirm =
+        d.responseText ||
+        `${formatDuration(seconds)} timer started${label && label !== 'Timer' ? ` for ${label}` : ''}.`
+      await speak(confirm)
+      return
+    }
+    case 'cancel_timers': {
+      const count = cancelVoiceTimers()
+      await speak(
+        count > 0
+          ? `Cancelled ${count} active timer${count === 1 ? '' : 's'}.`
+          : 'No active timers right now.'
+      )
+      return
+    }
+    case 'tell_joke': {
+      const joke = (d.responseText || '').trim() || pickLocalJoke()
+      await speak(joke)
+      return
+    }
+    case 'sing_song': {
+      const lyrics =
+        (d.responseText || '').trim() ||
+        pickSongSnippet(d.songTitle || d.title || '') ||
+        'La la la — give me a song name and I will do my best.'
+      const intro = d.songTitle ? `Here is ${d.songTitle}. ` : ''
+      await speak(`${intro}${lyrics}`)
+      return
+    }
+    case 'calculate': {
+      const answer = d.result || d.responseText
+      if (answer) {
+        await speak(d.responseText || `That equals ${answer}.`)
+        return
+      }
+      await speak('I could not calculate that. Try saying it like twenty-five times four.')
+      return
+    }
+    case 'open_reminders': {
+      openApp('reminders')
+      await speak(d.responseText || 'Opening Reminders.')
+      return
+    }
     case 'general_chat': {
       await speak(d.responseText || "I'm here. What would you like me to do?")
       return
@@ -630,7 +704,7 @@ export async function executeIntent(intent, aiData, speak) {
     case 'help': {
       await speak(
         d.responseText ||
-          'Try: message my wife on WhatsApp, draft an email to Saritha, open YouTube, or check weather.'
+          'Try: what time is it, set a five minute timer, tell me a joke, sing a song, message my wife on WhatsApp, open YouTube, or check weather.'
       )
       return
     }
