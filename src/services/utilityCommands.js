@@ -97,6 +97,22 @@ export function parseUtilityCommand(command) {
     return { intent: 'cancel_timers' }
   }
 
+  if (/\b(any|active)\s+timers?|timer status|timers running|list timers?\b/.test(lower)) {
+    return { intent: 'list_timers' }
+  }
+
+  const fiveMinTimer = lower.match(/\b(\d+)\s*(?:minute|min|mins|m)\s+timer\b/)
+  if (fiveMinTimer) {
+    const seconds = parseDurationSeconds(`${fiveMinTimer[1]} minutes`)
+    if (seconds > 0) return { intent: 'set_timer', durationSeconds: seconds, label: 'Timer' }
+  }
+
+  const timerFirst = lower.match(/\btimer\s+(?:for\s+)?(\d+\s*(?:minutes?|mins?|seconds?|secs?|hours?|hrs?)?.*?)$/i)
+  if (timerFirst) {
+    const seconds = parseDurationSeconds(timerFirst[1])
+    if (seconds > 0) return { intent: 'set_timer', durationSeconds: seconds, label: 'Timer' }
+  }
+
   const timerMatch =
     lower.match(
       /\b(?:set|start|create)\s+(?:a\s+)?timer\s+(?:for\s+)?(.+?)(?:\s+please)?$/

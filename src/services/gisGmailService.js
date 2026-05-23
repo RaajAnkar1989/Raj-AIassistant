@@ -329,14 +329,8 @@ class GisGmailService {
     return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
   }
 
-  async sendEmail({ to, subject, body }) {
-    // Ensure send scope
-    await this.requestAccessToken([
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.metadata',
-    ], { prompt: 'consent' })
-    const token = await this.ensureAccessToken()
-    const raw = [
+  buildRawEmail({ to, subject, body }) {
+    return [
       `To: ${to}`,
       'Content-Type: text/plain; charset=utf-8',
       'MIME-Version: 1.0',
@@ -344,6 +338,46 @@ class GisGmailService {
       '',
       body || '',
     ].join('\r\n')
+  }
+
+  async createDraft({ to, subject, body }) {
+    await this.requestAccessToken(
+      [
+        'https://www.googleapis.com/auth/gmail.compose',
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+      ],
+      { prompt: 'none' }
+    )
+    const token = await this.ensureAccessToken({ allowInteractive: true })
+    const encoded = this.toBase64Url(this.buildRawEmail({ to, subject, body }))
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message: { raw: encoded } }),
+    })
+    if (!res.ok) {
+      let detail = ''
+      try {
+        const j = await res.json()
+        detail = j?.error?.message || ''
+      } catch {}
+      throw new Error(detail || `Failed to create Gmail draft (${res.status})`)
+    }
+    return res.json()
+  }
+
+  async sendEmail({ to, subject, body }) {
+    // Ensure send scope
+    await this.requestAccessToken([
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.metadata',
+    ], { prompt: 'consent' })
+    const token = await this.ensureAccessToken()
+    const raw = this.buildRawEmail({ to, subject, body })
     const encoded = this.toBase64Url(raw)
     const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',

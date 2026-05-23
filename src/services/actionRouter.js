@@ -17,15 +17,18 @@ import { format, parseISO, isToday, isTomorrow } from 'date-fns'
 import {
   cancelVoiceTimers,
   formatDuration,
+  getActiveTimers,
   parseDurationSeconds,
   startVoiceTimer,
 } from './timerService'
 import {
-  formatCurrentDate,
-  formatCurrentTime,
-  pickLocalJoke,
-  pickSongSnippet,
-} from './utilityCommands'
+  openEmailDraftSmart,
+  openWhatsAppSmart,
+  openYouTubePlaySmart,
+  openSpotifyPlaySmart,
+  openComposeEmailSmart,
+  createGmailDraftSmart,
+} from './smartActionsService'
 
 const IOS_SCHEMES = {
   whatsapp: 'whatsapp://',
@@ -108,8 +111,15 @@ const APP_ALIASES = {
   preferences: 'settings',
   prefs: 'settings',
 }
+import {
+  formatCurrentDate,
+  formatCurrentTime,
+  pickLocalJoke,
+  pickSongSnippet,
+} from './utilityCommands'
+import { isIOSDevice, isMobileDevice, isAndroidDevice } from '../utils/device'
 
-import { isIOSDevice, isMobileDevice } from '../utils/device'
+export { isIOSDevice, isMobileDevice, isAndroidDevice }
 
 export function isMacDesktop() {
   if (typeof navigator === 'undefined') return false
@@ -159,20 +169,9 @@ export function openUrl(url) {
   }
 }
 
-export function openWhatsApp({ text, phone }) {
-  const encoded = encodeURIComponent(text || '')
-  if (phone) {
-    const digits = phone.replace(/\D/g, '')
-    if (!digits) return openUrl(`whatsapp://send?text=${encoded}`)
-    if (isIOSDevice()) {
-      return openUrl(`whatsapp://send?phone=${digits}&text=${encoded}`)
-    }
-    return openUrl(`https://wa.me/${digits}?text=${encoded}`)
-  }
-  if (isMacDesktop()) {
-    return openUrl(`https://web.whatsapp.com/send?text=${encoded}`)
-  }
-  return openUrl(`whatsapp://send?text=${encoded}`)
+export function openWhatsApp({ text, phone, displayName }) {
+  const result = openWhatsAppSmart({ text, phone, displayName })
+  return result.ok
 }
 
 export function openSms({ text, phone }) {
@@ -184,70 +183,36 @@ export function openSms({ text, phone }) {
 }
 
 export function openComposeEmail({ to, subject, body, useGmail }) {
-  const q = new URLSearchParams()
-  if (to) q.set('to', to)
-  if (subject) q.set('subject', subject)
-  if (body) q.set('body', body)
-  if (useGmail && !isMacDesktop()) {
-    return openUrl(`googlegmail:///co?${q.toString()}`)
-  }
-  if (isMacDesktop()) {
-    return openUrl(`https://mail.google.com/mail/?view=cm&${q.toString()}`)
-  }
-  return openUrl(`mailto:${to || ''}?${q.toString()}`)
+  return openComposeEmailSmart({ to, subject, body, useGmail })
 }
 
-export { isIOSDevice, isMobileDevice, isAndroidDevice } from '../utils/device'
 
-function buildYouTubeSearchUrl(query) {
-  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
+export async function openYouTubeSearch(query) {
+  return openYouTubePlaySmart(query)
 }
 
-function buildSpotifySearchUrl(query) {
-  return `https://open.spotify.com/search/${encodeURIComponent(query)}`
+export async function openSpotifySearch(query) {
+  return openSpotifyPlaySmart(query)
 }
 
-export function openYouTubeSearch(query) {
-  const q = String(query || '').trim()
-  if (!q) return openApp('youtube')
-  const url = buildYouTubeSearchUrl(q)
-  const ok = openUrl(url)
-  if (ok) recordRecentApp('youtube')
-  return {
-    ok,
-    message: ok ? `Playing ${q} on YouTube.` : `Couldn't search YouTube for ${q}.`,
-  }
-}
-
-export function openSpotifySearch(query) {
-  const q = String(query || '').trim()
-  if (!q) return openApp('spotify')
-  const url = isMobileDevice() ? `spotify:search:${encodeURIComponent(q)}` : buildSpotifySearchUrl(q)
-  const ok = openUrl(url)
-  if (ok) recordRecentApp('spotify')
-  return {
-    ok,
-    message: ok ? `Playing ${q} on Spotify.` : `Couldn't search Spotify for ${q}.`,
-  }
-}
-
-export function openAppAction({ appName, searchQuery, needsSearchQuery } = {}) {
+export async function openAppAction({ appName, searchQuery, needsSearchQuery } = {}) {
   const key = normalizeAppName(appName || 'app')
 
   if (needsSearchQuery && !searchQuery) {
-    return { ok: false, needsSearchQuery: true, appName: key, message: 'Which song or video?' }
+    return { ok: false, needsSearchQuery: true, appName: key, message: 'Which song or video, Boss?' }
   }
 
   if (searchQuery) {
-    if (key === 'youtube' || key === 'yt') return openYouTubeSearch(searchQuery)
-    if (key === 'spotify') return openSpotifySearch(searchQuery)
+    if (key === 'youtube' || key === 'yt') return openYouTubePlaySmart(searchQuery)
+    if (key === 'spotify') return openSpotifyPlaySmart(searchQuery)
     if (isMacDesktop()) {
       const ok = openUrl(`https://www.google.com/search?q=${encodeURIComponent(`${searchQuery} ${key}`)}`)
-      return { ok, message: ok ? `Searching for ${searchQuery}.` : 'Search failed.' }
+      return { ok, message: ok ? `Searching for ${searchQuery}, Boss.` : 'Search failed.' }
     }
   }
 
-  return openApp(appName)
+  const opened = openApp(appName)
+  return { ok: opened, message: opened ? 'Done, Boss.' : 'Could not open that app.' }
 }
 
 export function openApp(appName) {
@@ -329,17 +294,23 @@ async function executeSessionConfirm(speak) {
   if (!pending && session?.lastAction) {
     const last = session.lastAction
     if (last.intent === 'send_whatsapp' && last.phone && last.text) {
-      openWhatsApp({ text: last.text, phone: last.phone })
-      await speak(`Reopened WhatsApp for ${last.displayName}. Tap send.`)
+      const wa = openWhatsAppSmart({
+        text: last.text,
+        phone: last.phone,
+        displayName: last.displayName,
+      })
+      await speak(wa.message || `Reopened WhatsApp for ${last.displayName}, Boss.`)
       return
     }
     if (last.intent === 'compose_email' && last.to) {
-      openComposeEmail({
+      const emailResult = await openEmailDraftSmart({
         to: last.to,
         subject: last.subject || '',
         body: last.body || '',
+        toName: last.displayName,
+        preview: true,
       })
-      await speak(`Reopened your email to ${last.displayName}.`)
+      await speak(emailResult.message || `Reopened your email to ${last.displayName}, Boss.`)
       return
     }
   }
@@ -358,11 +329,12 @@ async function executeSessionConfirm(speak) {
       )
       return
     }
-    openComposeEmail({
+    const emailResult = await openEmailDraftSmart({
       to,
-      subject: pending.subject || '',
+      subject: pending.subject || `Message to ${pending.toName || pending.displayName}`,
       body: pending.body || '',
-      useGmail: pending.useGmail !== false,
+      toName: pending.toName || pending.displayName,
+      preview: true,
     })
     rememberLastAction({
       intent: 'compose_email',
@@ -370,9 +342,10 @@ async function executeSessionConfirm(speak) {
       to,
       subject: pending.subject,
       body: pending.body,
-      opened: true,
+      opened: emailResult.ok,
     })
-    await speak(`Done. Review the email to ${pending.toName || pending.displayName}, then send.`)
+    clearPendingAction()
+    await speak(emailResult.message || `Done, Boss. Review the email to ${pending.toName || pending.displayName}.`)
     return
   }
 
@@ -384,15 +357,20 @@ async function executeSessionConfirm(speak) {
       )
       return
     }
-    openWhatsApp({ text: pending.rewrittenText || '', phone: person.phone })
+    const wa = openWhatsAppSmart({
+      text: pending.rewrittenText || '',
+      phone: person.phone,
+      displayName: pending.displayName || person.displayName,
+    })
     rememberLastAction({
       intent: 'send_whatsapp',
       displayName: pending.displayName || person.displayName,
       phone: person.phone,
       text: pending.rewrittenText,
-      opened: true,
+      opened: wa.ok,
     })
-    await speak(`WhatsApp is ready for ${pending.displayName || person.displayName}. Tap send.`)
+    clearPendingAction()
+    await speak(wa.message || `WhatsApp is ready for ${pending.displayName || person.displayName}, Boss.`)
     return
   }
 
@@ -501,15 +479,19 @@ export async function executeIntent(intent, aiData, speak) {
         return
       }
 
-      openWhatsApp({ text, phone: person.phone })
+      const wa = openWhatsAppSmart({
+        text,
+        phone: person.phone,
+        displayName,
+      })
       rememberLastAction({
         intent: 'send_whatsapp',
         displayName,
         phone: person.phone,
         text,
-        opened: true,
+        opened: wa.ok,
       })
-      await speak(`WhatsApp ready for ${displayName}. Tap send.`)
+      await speak(wa.message || `WhatsApp ready for ${displayName}, Boss. Tap send.`)
       return
     }
     case 'send_sms': {
@@ -570,16 +552,39 @@ export async function executeIntent(intent, aiData, speak) {
           body,
           useGmail: d.useGmail !== false,
         })
-        const preview = body.length > 100 ? `${body.slice(0, 100)}…` : body
+        const preview = body.length > 90 ? `${body.slice(0, 90)}…` : body
         await speak(
-          `Draft to ${toName}. Subject: ${subject || 'no subject'}. ${preview}. Say send it to open, or tell me what to change.`
+          `Boss, I've drafted an email to ${toName}. Subject: ${subject || 'follow up'}. ${preview}. Say send it when you're happy, or tell me what to change.`
         )
         return
       }
 
-      openComposeEmail({ to, subject, body, useGmail: d.useGmail !== false })
-      rememberLastAction({ intent: 'compose_email', displayName: toName, to, subject, body, opened: true })
-      await speak(`Done. Email to ${toName} is ready. Review and send.`)
+      if (!body) {
+        await speak(`Boss, tell me what you'd like to say in the email to ${toName}.`)
+        setPendingAction({
+          intent: 'compose_email',
+          type: 'email',
+          status: 'awaiting_confirm',
+          contact: d.contact || toName,
+          displayName: toName,
+          toName,
+          to,
+          subject,
+          body: '',
+          useGmail: d.useGmail !== false,
+        })
+        return
+      }
+
+      const emailResult = await openEmailDraftSmart({
+        to,
+        subject: subject || `Message to ${toName}`,
+        body,
+        toName,
+        preview: true,
+      })
+      rememberLastAction({ intent: 'compose_email', displayName: toName, to, subject, body, opened: emailResult.ok })
+      await speak(emailResult.message || `Email draft ready for ${toName}, Boss.`)
       return
     }
     case 'open_app': {
@@ -592,15 +597,15 @@ export async function executeIntent(intent, aiData, speak) {
         await speak('Which song or video?')
         return
       }
-      const result = openAppAction({
+      const result = await openAppAction({
         appName: d.appName || 'app',
         searchQuery: d.searchQuery,
       })
       if (result.ok && d.searchQuery) clearPendingAction()
       if (result.ok) {
-        void speak(result.message || 'Done.')
+        await speak(result.message || 'Done, Boss.')
       } else {
-        await speak(result.message || 'Could not open that.')
+        await speak(result.message || 'Could not open that, Boss.')
       }
       return
     }
@@ -649,23 +654,36 @@ export async function executeIntent(intent, aiData, speak) {
           ? Number(d.durationSeconds)
           : parseDurationSeconds(d.duration || d.label || '')
       if (!seconds) {
-        await speak('How long should I set the timer for? Try five minutes.')
+        await speak('How long should I set the timer for, Boss? Try five minutes.')
         return
       }
       const label = (d.label || 'Timer').trim()
       startVoiceTimer({ seconds, label })
       const confirm =
         d.responseText ||
-        `${formatDuration(seconds)} timer started${label && label !== 'Timer' ? ` for ${label}` : ''}.`
+        `Done, Boss — ${formatDuration(seconds)} timer started${label && label !== 'Timer' ? ` for ${label}` : ''}.`
       await speak(confirm)
+      return
+    }
+    case 'list_timers': {
+      const timers = getActiveTimers()
+      if (!timers.length) {
+        await speak('No active timers right now, Boss.')
+        return
+      }
+      const lines = timers
+        .slice(0, 3)
+        .map((t) => `${t.label} in ${formatDuration(t.remainingSeconds)}`)
+        .join(', ')
+      await speak(`You have ${timers.length} timer${timers.length === 1 ? '' : 's'} running, Boss. ${lines}.`)
       return
     }
     case 'cancel_timers': {
       const count = cancelVoiceTimers()
       await speak(
         count > 0
-          ? `Cancelled ${count} active timer${count === 1 ? '' : 's'}.`
-          : 'No active timers right now.'
+          ? `Cancelled ${count} active timer${count === 1 ? '' : 's'}, Boss.`
+          : 'No active timers right now, Boss.'
       )
       return
     }
@@ -698,13 +716,13 @@ export async function executeIntent(intent, aiData, speak) {
       return
     }
     case 'general_chat': {
-      await speak(d.responseText || "I'm here. What would you like me to do?")
+      await speak(d.responseText || "I'm here, Boss. What would you like me to do?")
       return
     }
     case 'help': {
       await speak(
         d.responseText ||
-          'Try: what time is it, set a five minute timer, tell me a joke, sing a song, message my wife on WhatsApp, open YouTube, or check weather.'
+          'Try: Jarvis, set a five minute timer. Jarvis, what time is it. Jarvis, tell me a joke. Or message someone on WhatsApp, Boss.'
       )
       return
     }

@@ -7,13 +7,14 @@ import { Toaster } from 'react-hot-toast'
 
 import { migrateBrainSettings, getBrainProvider, resolveBrainConfig, isBrainUserLocked } from './constants/aiProviders'
 import { clearQuotaExceededCache } from './utils/openaiErrors'
+import { restoreVoiceTimers } from './services/timerService'
 import { syncFreeLLMAPIFromLocal } from './services/freellmapiSync'
 import { syncOllamaFromLocal } from './services/ollamaSync'
 import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '7-brain-persist'
+const APP_SHELL_VERSION = '8-jarvis-boss'
 
 /** Old PWA/service worker caches served the dashboard UI — clear them once. */
 async function migrateAppShell() {
@@ -65,6 +66,7 @@ async function boot() {
   migrateBrainSettings()
   resolveBrainConfig({ persist: !isBrainUserLocked() })
   if (getBrainProvider() !== 'openai') clearQuotaExceededCache()
+  void restoreVoiceTimers()
 
   if (import.meta.env.DEV || import.meta.env.VITE_OLLAMA_ENABLED === '1' || import.meta.env.VITE_OLLAMA_ENABLED === 'true') {
     try {

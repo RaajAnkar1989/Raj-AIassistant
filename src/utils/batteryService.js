@@ -148,7 +148,7 @@ function reminderMessage(threshold, level) {
   if (threshold >= 20) {
     return `Heads up — you're at ${level} percent now. A quick charge would be wise before you're caught without power.`
   }
-  return `You're down to ${level} percent. I'd recommend finding a charger fairly soon, sir.`
+  return `You're down to ${level} percent, Boss. I'd recommend finding a charger fairly soon.`
 }
 
 export function evaluateBatteryReminder(snap = getBatterySnapshot()) {

@@ -11,6 +11,7 @@ const APP_PATTERNS = {
   youtube: [
     /(?:play|start|put on)\s+(?:a\s+)?(?:song|video|music|track)\s+(?:called|named)?\s*(.+?)\s+(?:on|in|using)\s+(?:youtube|yt)\b/i,
     /(?:play|start)\s+(.+?)\s+(?:on|in|using)\s+(?:youtube|yt)\b/i,
+    /(?:play|start)\s+(?:the\s+)?(?:song|video|music|track)\s+(.+?)$/i,
     /(?:search|find)\s+(?:youtube|yt)\s+(?:for\s+)?(.+)/i,
     /(?:search|find)\s+(?:for\s+)?(.+?)\s+(?:on|in)\s+(?:youtube|yt)\b/i,
     /(?:youtube|yt)\s+(?:play|search)\s+(?:for\s+)?(.+)/i,

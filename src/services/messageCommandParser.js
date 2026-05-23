@@ -155,6 +155,8 @@ export function enrichBrainCommand(command, localParse) {
   if (localParse.phone) bits.push(`Phone: ${localParse.phone}`)
   if (localParse.to) bits.push(`Email: ${localParse.to}`)
   if (localParse.topic) bits.push(`Topic: ${localParse.topic}`)
-  bits.push('Return JSON only. For messages, polish rewrittenText. For email, include subject and body.')
+  bits.push(
+    'Return JSON only. For WhatsApp/SMS: write a polished, complete rewrittenText ready to send. For email: full professional subject AND multi-sentence body from the topic — ChatGPT quality, not one line.'
+  )
   return bits.join('\n')
 }

@@ -7,6 +7,7 @@ import gisCalendarService from '../services/gisCalendarService'
 import gisGmailService from '../services/gisGmailService'
 import dataService from '../services/dataService'
 import { getBatterySnapshot, startBatteryMonitoring, subscribeBattery } from '../utils/batteryService'
+import { getActiveTimerCount, TIMER_DONE_EVENT } from '../services/timerService'
 
 const DAILY_TIPS = [
   'Say: open YouTube',
@@ -15,6 +16,8 @@ const DAILY_TIPS = [
   'Say: open Spotify',
   'Say: read my emails',
   'Say: open WhatsApp',
+  'Say: Jarvis, set a 5 minute timer',
+  'Say: Jarvis, what time is it',
   'Say: battery is 45 percent',
 ]
 
@@ -127,6 +130,7 @@ export function useJarvisHud({ sessionActive, sessionStartedAt } = {}) {
   const [nextEvent, setNextEvent] = useState(null)
   const [unreadEmailCount, setUnreadEmailCount] = useState(null)
   const [tasks, setTasks] = useState({ pendingCount: 0, dueTodayCount: 0, topTasks: [] })
+  const [activeTimers, setActiveTimers] = useState(0)
   const [tips] = useState(() => {
     const hour = new Date().getHours()
     const offset = hour % DAILY_TIPS.length
@@ -188,6 +192,17 @@ export function useJarvisHud({ sessionActive, sessionStartedAt } = {}) {
   }, [])
 
   useEffect(() => {
+    const refreshTimers = () => setActiveTimers(getActiveTimerCount())
+    refreshTimers()
+    const id = setInterval(refreshTimers, 1000)
+    window.addEventListener(TIMER_DONE_EVENT, refreshTimers)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener(TIMER_DONE_EVENT, refreshTimers)
+    }
+  }, [])
+
+  useEffect(() => {
     refreshWeather()
     refreshCalendar()
     refreshEmail()
@@ -220,5 +235,6 @@ export function useJarvisHud({ sessionActive, sessionStartedAt } = {}) {
     googleConnected: googleStatus.connected,
     sessionLabel: sessionActive ? formatSessionDuration(sessionMs) : 'Idle',
     sessionActive,
+    activeTimers,
   }
 }

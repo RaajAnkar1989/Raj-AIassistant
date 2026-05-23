@@ -7,6 +7,7 @@
  *   netlify login           (once)
  */
 import { spawnSync } from 'node:child_process'
+import dns from 'node:dns/promises'
 import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,13 +56,69 @@ function readTunnelUrl() {
   return readFileSync(TUNNEL_FILE, 'utf8').trim().replace(/\/$/, '')
 }
 
-async function verifyTunnel(url) {
-  try {
-    const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(8000) })
-    return res.ok
-  } catch {
-    return false
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function resolveTunnelHost(hostname) {
+  for (const resolver of ['8.8.8.8', '1.1.1.1']) {
+    const result = spawnSync('dig', ['+short', hostname, `@${resolver}`], { encoding: 'utf8' })
+    const ip = (result.stdout || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => /^\d+\.\d+\.\d+\.\d+$/.test(line))
+    if (ip) return ip
   }
+
+  try {
+    const { address } = await dns.lookup(hostname, { family: 4 })
+    if (address) return address
+  } catch {}
+
+  return '104.16.230.132'
+}
+
+async function verifyTunnelOnce(url) {
+  const origin = url.replace(/\/$/, '')
+  const tagsUrl = `${origin}/api/tags`
+  const parsed = new URL(origin)
+
+  try {
+    const res = await fetch(tagsUrl, { signal: AbortSignal.timeout(12000) })
+    if (res.ok) return true
+  } catch {
+    // trycloudflare DNS is often flaky on macOS — curl --resolve is more reliable
+  }
+
+  const ip = await resolveTunnelHost(parsed.hostname)
+  const result = spawnSync(
+    'curl',
+    [
+      '-sS',
+      '-m',
+      '15',
+      '-o',
+      '/dev/null',
+      '-w',
+      '%{http_code}',
+      '--resolve',
+      `${parsed.hostname}:443:${ip}`,
+      tagsUrl,
+    ],
+    { encoding: 'utf8' },
+  )
+  return result.stdout?.trim() === '200'
+}
+
+async function verifyTunnel(url, { attempts = 5, delayMs = 2000 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (await verifyTunnelOnce(url)) return true
+    if (attempt < attempts) {
+      console.log(`  Tunnel check ${attempt}/${attempts} failed — retrying in ${delayMs / 1000}s…`)
+      await sleep(delayMs)
+    }
+  }
+  return false
 }
 
 function pushVar(key, value, secret = false) {

@@ -50,6 +50,7 @@ const FAST_INTENTS = new Set([
   'show_time',
   'show_date',
   'set_timer',
+  'list_timers',
   'cancel_timers',
   'tell_joke',
   'sing_song',
@@ -113,7 +114,7 @@ export const processVoiceCommand = createAsyncThunk(
           command,
           'general_chat',
           {
-            responseText: `Noted. Battery at ${batteryReport.level} percent${batteryReport.charging ? ', and charging' : ''}.`,
+            responseText: `Noted, Boss. Battery at ${batteryReport.level} percent${batteryReport.charging ? ', and charging' : ''}.`,
           },
           false
         )
@@ -121,14 +122,14 @@ export const processVoiceCommand = createAsyncThunk(
 
       if (/what('s| is)\s+my\s+battery|battery\s+level|how\s+much\s+battery/i.test(command)) {
         const snap = getBatterySnapshot()
-        let responseText = "Battery information isn't available right now."
-        if (snap.source === 'api' && snap.level != null) {
-          responseText = `You're at ${snap.level} percent${snap.charging ? ', and charging nicely' : ''}.`
+        let responseText = "Boss, battery information isn't available yet."
+        if (snap.level != null) {
+          responseText = `You're at ${snap.level} percent, Boss${snap.charging ? ', and charging nicely' : ''}.`
         } else if (snap.source === 'reported' && snap.level != null) {
-          responseText = `Last reported at ${snap.level} percent${snap.charging ? ', charging' : ''}.`
+          responseText = `Last reported at ${snap.level} percent, Boss${snap.charging ? ', charging' : ''}.`
         } else if (isIOSDevice()) {
           responseText =
-            "I can't read iPhone battery from the browser. Check the status bar, or say battery is 45 percent and I'll track it."
+            "Boss, I can't read iPhone battery from the browser. Glance at the status bar, or say battery is 45 percent once and I'll track it."
         }
         return buildCommandResult(command, 'general_chat', { responseText }, false)
       }

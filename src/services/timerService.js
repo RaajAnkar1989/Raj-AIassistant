@@ -1,13 +1,92 @@
 /** Voice timers — runs in-browser, notifies when done. */
 
-const activeTimers = new Map()
+const STORAGE_KEY = 'raj_active_timers'
 export const TIMER_DONE_EVENT = 'raj-timer-done'
+
+const activeTimers = new Map()
+let restorePromise = null
 
 function requestNotificationPermission() {
   if (typeof Notification === 'undefined') return
   if (Notification.permission === 'default') {
     void Notification.requestPermission()
   }
+}
+
+function persistTimers() {
+  if (typeof localStorage === 'undefined') return
+  const entries = [...activeTimers.values()].map(({ label, endsAt, seconds }) => ({
+    label,
+    endsAt,
+    seconds,
+  }))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  } catch {
+    /* ignore */
+  }
+}
+
+function fireTimerDone(label) {
+  const message = `${label} is done, Boss.`
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(TIMER_DONE_EVENT, { detail: { message, label } }))
+  }
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try {
+      new Notification('Jarvis — timer finished', { body: message })
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function scheduleTimerEntry(id, { label, endsAt, seconds }) {
+  const delay = Math.max(0, endsAt - Date.now())
+  const timeoutId = setTimeout(() => {
+    activeTimers.delete(id)
+    persistTimers()
+    fireTimerDone(label)
+  }, delay)
+
+  activeTimers.set(id, { timeoutId, label, endsAt, seconds })
+  persistTimers()
+}
+
+export function restoreVoiceTimers() {
+  if (restorePromise) return restorePromise
+  restorePromise = Promise.resolve().then(() => {
+    if (typeof localStorage === 'undefined') return
+    let saved = []
+    try {
+      saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    } catch {
+      saved = []
+    }
+
+    const now = Date.now()
+    for (const entry of saved) {
+      if (!entry?.endsAt || entry.endsAt <= now) {
+        if (entry?.label && entry.endsAt && entry.endsAt <= now && now - entry.endsAt < 60_000) {
+          fireTimerDone(entry.label || 'Timer')
+        }
+        continue
+      }
+      const id = `${entry.endsAt}-${Math.random().toString(36).slice(2, 7)}`
+      scheduleTimerEntry(id, {
+        label: entry.label || 'Timer',
+        endsAt: entry.endsAt,
+        seconds: entry.seconds || Math.round((entry.endsAt - now) / 1000),
+      })
+    }
+  })
+  return restorePromise
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void restoreVoiceTimers()
+  })
 }
 
 export function formatDuration(seconds) {
@@ -47,25 +126,12 @@ export function parseDurationSeconds(text) {
 }
 
 export function startVoiceTimer({ seconds, label = 'Timer' } = {}) {
+  void restoreVoiceTimers()
   const duration = Math.min(Math.max(Math.round(Number(seconds) || 0), 1), 24 * 3600)
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   const endsAt = Date.now() + duration * 1000
   requestNotificationPermission()
-
-  const timeoutId = setTimeout(() => {
-    activeTimers.delete(id)
-    const message = `${label} is done.`
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(TIMER_DONE_EVENT, { detail: { message, label } }))
-    }
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      try {
-        new Notification('Raj — timer finished', { body: message })
-      } catch {}
-    }
-  }, duration * 1000)
-
-  activeTimers.set(id, { timeoutId, label, endsAt, seconds: duration })
+  scheduleTimerEntry(id, { label, endsAt, seconds: duration })
   return { id, seconds: duration, label, endsAt }
 }
 
@@ -75,9 +141,23 @@ export function cancelVoiceTimers() {
   }
   const count = activeTimers.size
   activeTimers.clear()
+  persistTimers()
   return count
 }
 
 export function getActiveTimerCount() {
   return activeTimers.size
+}
+
+export function getActiveTimers() {
+  const now = Date.now()
+  return [...activeTimers.values()]
+    .map(({ label, endsAt, seconds }) => ({
+      label,
+      endsAt,
+      seconds,
+      remainingSeconds: Math.max(0, Math.round((endsAt - now) / 1000)),
+    }))
+    .filter((t) => t.remainingSeconds > 0)
+    .sort((a, b) => a.endsAt - b.endsAt)
 }

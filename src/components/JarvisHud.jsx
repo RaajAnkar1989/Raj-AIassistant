@@ -92,19 +92,20 @@ function InboxTasksPanel({ hud }) {
 const JarvisHud = ({ sessionActive = false, sessionStartedAt = null }) => {
   const hud = useJarvisHud({ sessionActive, sessionStartedAt })
 
-  const batteryValue = hud.battery.supported && hud.battery.level != null
-    ? `${hud.battery.level}%${hud.battery.charging ? ' ⚡' : ''}`
-    : hud.battery.iosLimited
-      ? '—'
-      : 'N/A'
-  const batteryPct = hud.battery.supported && hud.battery.level != null ? hud.battery.level : 0
+  const batteryValue =
+    hud.battery.level != null
+      ? `${hud.battery.level}%${hud.battery.charging ? ' ⚡' : ''}`
+      : hud.battery.iosLimited
+        ? 'Say level'
+        : 'N/A'
+  const batteryPct = hud.battery.level != null ? hud.battery.level : 0
   const batteryDetail = hud.battery.charging
     ? 'Charging'
     : hud.battery.source === 'reported'
-      ? 'Reported level'
-      : hud.battery.iosLimited && !hud.battery.supported
+      ? 'Voice reported'
+      : hud.battery.iosLimited && hud.battery.level == null
         ? 'Say: battery is 45 percent'
-        : hud.battery.supported
+        : hud.battery.level != null
           ? 'Power'
           : 'Unavailable'
   const batteryTone =
@@ -137,6 +138,14 @@ const JarvisHud = ({ sessionActive = false, sessionStartedAt = null }) => {
               percent={hud.memory.percent}
               detail={hud.memory.detail}
               tone={hud.memory.percent > 80 ? 'warn' : 'cyan'}
+            />
+
+            <HudStat
+              label="Timers"
+              value={String(hud.activeTimers || 0)}
+              percent={Math.min(100, (hud.activeTimers || 0) * 25)}
+              detail={hud.activeTimers > 0 ? 'Running now' : 'None active'}
+              tone={hud.activeTimers > 0 ? 'good' : 'cyan'}
             />
 
             <HudStat

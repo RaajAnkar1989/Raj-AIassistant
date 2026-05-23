@@ -6,8 +6,8 @@ const STORAGE_KEY = 'voice_pro_settings'
 const LEGACY_VOICE_KEY = 'voice_settings'
 
 export const DEFAULT_VOICE_PRO = {
-  wakeWordEnabled: false,
-  wakeWord: 'hey raj',
+  wakeWordEnabled: true,
+  wakeWord: 'jarvis',
   pushToTalk: false,
   pushToTalkKey: 'Space',
   sttEngine: 'web-speech',
@@ -21,7 +21,7 @@ export const DEFAULT_VOICE_PRO = {
 
 export const DEFAULT_VOICE_UI = {
   language: 'en-IN',
-  rate: 0.95,
+  rate: 1.14,
   pitch: 1,
   volume: 1,
   autoSpeak: true,
@@ -163,6 +163,15 @@ export function migrateVoiceSettings() {
 
   if (!pro.azure?.voiceName) {
     pro.azure = { ...pro.azure, voiceName: DEFAULT_FREE_VOICE }
+    changed = true
+  }
+
+  if (pro.wakeWord === 'hey raj' || pro.wakeWord === 'hey Raj') {
+    pro.wakeWord = 'jarvis'
+    changed = true
+  }
+  if (pro.wakeWordEnabled === false && pro.wakeWord === 'hey raj') {
+    pro.wakeWordEnabled = true
     changed = true
   }
 
