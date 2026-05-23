@@ -176,7 +176,7 @@ async function callOllama(command, model) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: model || 'llama3.1:8b',
+      model: model || getBrainModel('ollama'),
       messages: [
         { role: 'system', content: systemPrompt },
         ...history,

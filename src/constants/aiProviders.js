@@ -1,5 +1,8 @@
 /** Free-first AI providers for Raj brain (testing). */
 
+import { getCachedOllamaModels } from '../utils/ollamaModelsCache'
+import { pickInstalledOllamaModel } from '../utils/ollamaModelPick'
+
 export const BRAIN_PROVIDER_KEY = 'raj_brain_provider'
 export const BRAIN_MODEL_KEY = 'raj_brain_model'
 export const BRAIN_USER_LOCKED_KEY = 'raj_brain_user_locked'
@@ -23,16 +26,20 @@ export const AI_PROVIDERS = {
     keyUrl: 'https://ollama.com/download',
     signupLabel: 'Get Ollama for Mac',
     models: [
-      { id: 'llama3.1:8b', label: 'Llama 3.1 8B (default, fast)' },
+      { id: 'llama3.2:latest', label: 'Llama 3.2 (default, fast)' },
+      { id: 'llama3.1:8b', label: 'Llama 3.1 8B' },
       { id: 'llama3.1:latest', label: 'Llama 3.1 latest' },
-      { id: 'qwen3-vl:8b', label: 'Qwen 3 VL 8B (slower, vision)' },
+      { id: 'llama3:8b', label: 'Llama 3 8B' },
+      { id: 'qwen3-vl:8b', label: 'Qwen 3 VL 8B (vision, slower)' },
+      { id: 'moondream:latest', label: 'Moondream (fast vision — recommended for images)' },
       { id: 'qwen3:8b', label: 'Qwen 3 8B' },
       { id: 'qwen3:4b', label: 'Qwen 3 4B' },
       { id: 'qwen2.5-coder:1.5b', label: 'Qwen 2.5 Coder 1.5B (fast)' },
       { id: 'qwen2.5:7b', label: 'Qwen 2.5 7B' },
       { id: 'llama3.2:3b', label: 'Llama 3.2 3B' },
+      { id: 'deepseek-r1:latest', label: 'DeepSeek R1' },
     ],
-    defaultModel: 'llama3.1:8b',
+    defaultModel: 'llama3.2:latest',
     free: true,
     local: true,
   },
@@ -132,8 +139,19 @@ export function getBrainModel(provider = getBrainProvider()) {
   const def = AI_PROVIDERS[provider]?.defaultModel || AI_PROVIDERS.ollama.defaultModel
   if (typeof window === 'undefined') return def
   const stored = localStorage.getItem(BRAIN_MODEL_KEY)?.trim()
-  const models = AI_PROVIDERS[provider]?.models || []
-  if (stored && models.some((m) => m.id === stored)) return stored
+  const catalog = AI_PROVIDERS[provider]?.models || []
+
+  if (provider === 'ollama') {
+    const installed = getCachedOllamaModels()
+    const preferred = stored || import.meta.env.VITE_OLLAMA_MODEL?.trim() || def
+    if (installed.length) {
+      return pickInstalledOllamaModel(installed, preferred)
+    }
+    if (stored && catalog.some((m) => m.id === stored)) return stored
+    return import.meta.env.VITE_OLLAMA_MODEL?.trim() || def
+  }
+
+  if (stored && catalog.some((m) => m.id === stored)) return stored
   return def
 }
 
@@ -376,6 +394,14 @@ export function migrateBrainSettings() {
 
   const storedModel = localStorage.getItem(BRAIN_MODEL_KEY)
   const activeProvider = localStorage.getItem(BRAIN_PROVIDER_KEY) || DEFAULT_BRAIN_PROVIDER
+
+  if (activeProvider === 'ollama') {
+    const installed = getCachedOllamaModels()
+    if (installed.length && storedModel && !installed.includes(storedModel)) {
+      setBrainModel(pickInstalledOllamaModel(installed, storedModel))
+    }
+  }
+
   const validModels = AI_PROVIDERS[activeProvider]?.models || []
   if (storedModel && !validModels.some((m) => m.id === storedModel)) {
     localStorage.setItem(BRAIN_MODEL_KEY, AI_PROVIDERS[activeProvider]?.defaultModel || 'auto')

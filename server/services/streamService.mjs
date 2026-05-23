@@ -9,7 +9,7 @@ import {
   saveExchange,
   rememberFact,
 } from './memoryService.mjs'
-import { extractSentences, synthesizeSentence, splitForImmediateTts } from './ttsService.mjs'
+import { extractSentences, synthesizeSentence } from './ttsService.mjs'
 import { runReactLoop } from './reactService.mjs'
 import { extractPartialResponseText, speechFromModelOutput, tryParseIntent } from '../utils/jsonParse.mjs'
 
@@ -26,13 +26,14 @@ function streamSpeechToClient(ws, buffer, lastSentRef) {
   if (!speech || speech.length <= lastSentRef.length + 5) return lastSentRef
 
   const delta = speech.slice(lastSentRef.length)
-  const { sentences } = extractSentences(delta, { minLen: 6 })
+  const { sentences, rest } = extractSentences(delta, { minLen: 6 })
   for (const sentence of sentences) {
-    const utterance = (lastSentRef + sentence).trim()
-    if (utterance.length > lastSentRef.length) {
-      lastSentRef = utterance
-      send(ws, { type: 'sentence', text: utterance })
-    }
+    const chunk = sentence.trim()
+    if (chunk) send(ws, { type: 'sentence', text: chunk })
+  }
+  if (sentences.length) {
+    const consumed = delta.slice(0, delta.length - rest.length)
+    lastSentRef = speech.slice(0, lastSentRef.length + consumed.length)
   }
   return lastSentRef
 }
@@ -40,7 +41,8 @@ function streamSpeechToClient(ws, buffer, lastSentRef) {
 function flushSpeechTail(ws, buffer, lastSentRef) {
   const speech = speechFromModelOutput(buffer)
   if (!speech || speech.length <= lastSentRef.length) return lastSentRef
-  send(ws, { type: 'sentence', text: speech })
+  const tail = speech.slice(lastSentRef.length).trim()
+  if (tail) send(ws, { type: 'sentence', text: tail })
   return speech
 }
 
@@ -132,12 +134,6 @@ async function runAgentJson({ ws, models, route, userText, history, memorySectio
 
   const speech = speechFromIntent(intent)
   lastSentSpeech = flushSpeechTail(ws, speech, lastSentSpeech)
-  for (const sentence of splitForImmediateTts(speech)) {
-    if (sentence.length > lastSentSpeech.length) {
-      lastSentSpeech = sentence
-      send(ws, { type: 'sentence', text: sentence })
-    }
-  }
 
   await saveExchange(userText, intent)
   send(ws, { type: 'intent', data: intent })

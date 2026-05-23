@@ -22,14 +22,34 @@ export function textSimilarity(a, b) {
   return overlap / Math.max(ta.length, tb.length)
 }
 
-/** Only reject obvious TTS echo while the guard window is active (right after Raj speaks). */
+/** Reject TTS echo — while Raj is speaking or shortly after. */
 export function looksLikeAssistantEcho(command, lastSpoken = '', guardActive = false) {
-  if (!guardActive) return false
   const text = String(command || '').trim()
   if (!text) return true
   if (ASSISTANT_OPENING_RE.test(text)) return true
-  if (lastSpoken && textSimilarity(text, lastSpoken) >= 0.72) return true
+  if (!lastSpoken) return false
+
+  const spoken = String(lastSpoken).trim()
+  if (textSimilarity(text, spoken) >= 0.42) return true
+
+  if (guardActive) {
+    const t = text.toLowerCase()
+    const s = spoken.toLowerCase()
+    if (t.length > 10 && s.includes(t)) return true
+    if (s.length > 16 && t.includes(s.slice(0, Math.min(48, s.length)))) return true
+    const tw = tokenize(t)
+    const sw = tokenize(s)
+    if (tw.length >= 4 && sw.length >= 4) {
+      const shared = tw.filter((w) => sw.includes(w)).length
+      if (shared / tw.length >= 0.55) return true
+    }
+  }
   return false
+}
+
+export function estimateEchoCooldownMs(text, baseMs = 450) {
+  const len = String(text || '').length
+  return Math.min(3500, baseMs + len * 8)
 }
 
 export function isLikelyNoiseCommand(command) {
@@ -70,9 +90,4 @@ export function isDuplicateAction(actionKey, lastAction, windowMs = 4000) {
   if (!actionKey || !lastAction?.key) return false
   if (actionKey !== lastAction.key) return false
   return Date.now() - lastAction.at < windowMs
-}
-
-export function estimateEchoCooldownMs(text, baseMs = 450) {
-  const len = String(text || '').length
-  return Math.min(1200, baseMs + len * 6)
 }

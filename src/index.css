@@ -69,6 +69,22 @@ body {
   background: rgba(34, 211, 238, 0.08);
 }
 
+.jarvis-chat-btn {
+  position: absolute !important;
+  top: max(16px, env(safe-area-inset-top));
+  right: calc(max(16px, env(safe-area-inset-right)) + 48px);
+  z-index: 10;
+  color: rgba(148, 163, 184, 0.7) !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(34, 211, 238, 0.15) !important;
+  backdrop-filter: blur(8px);
+}
+
+.jarvis-chat-btn:hover {
+  color: #22d3ee !important;
+  border-color: rgba(34, 211, 238, 0.4) !important;
+}
+
 .jarvis-settings-btn {
   position: absolute !important;
   top: max(16px, env(safe-area-inset-top));

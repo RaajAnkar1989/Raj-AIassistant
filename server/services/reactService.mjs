@@ -1,7 +1,7 @@
 import { MAX_REACT_STEPS, CLIENT_ACTIONS, REACT_SYSTEM_PROMPT, parseReactStep, buildObservationMessage, mapActionToIntent } from '../agents/reactAgent.mjs'
 import { chatOnce, chatStream } from './ollamaClient.mjs'
 import { buildMemorySystemSection, loadShortTermContext, saveExchange } from './memoryService.mjs'
-import { extractSentences, splitForImmediateTts } from './ttsService.mjs'
+import { splitForImmediateTts } from './ttsService.mjs'
 import { STREAM_OPTIONS, SMART_MODEL } from '../config.mjs'
 import { pickModel, listModels } from './ollamaClient.mjs'
 import { rememberFact } from './memoryService.mjs'
@@ -11,20 +11,13 @@ function send(ws, payload) {
   ws.send(JSON.stringify(payload))
 }
 
-function streamSentences(ws, text, state) {
-  let pending = String(text || '')
-  let spoken = ''
-  const { sentences, rest } = extractSentences(pending, { minLen: 8 })
-  for (const sentence of sentences) {
-    if (sentence.length > spoken.length) {
-      spoken = sentence
-      send(ws, { type: 'sentence', text: sentence })
-    }
+function streamSentences(ws, text) {
+  const pending = String(text || '').trim()
+  if (!pending) return
+  for (const sentence of splitForImmediateTts(pending)) {
+    const chunk = sentence.trim()
+    if (chunk) send(ws, { type: 'sentence', text: chunk })
   }
-  if (rest.trim().length > 12) {
-    send(ws, { type: 'sentence', text: rest.trim() })
-  }
-  return spoken
 }
 
 /**

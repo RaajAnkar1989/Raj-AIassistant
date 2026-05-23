@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 /** Check local Ollama and pick a Qwen model if available. */
+import { pickInstalledOllamaModel } from '../src/utils/ollamaModelPick.js'
+
 const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '')
-const DEFAULT_MODEL = process.env.VITE_OLLAMA_MODEL || process.env.OLLAMA_MODEL || 'llama3.1:8b'
+const DEFAULT_MODEL = process.env.VITE_OLLAMA_MODEL || process.env.OLLAMA_MODEL || 'llama3.2:latest'
 
 function pickDefaultModel(names) {
-  return (
-    names.find((n) => /^llama3\.1:8b$/i.test(n) || /llama3\.1.*8b/i.test(n)) ||
-    names.find((n) => /llama3\.1/i.test(n)) ||
-    names.find((n) => /llama3/i.test(n)) ||
-    names.find((n) => /qwen/i.test(n)) ||
-    names[0] ||
-    DEFAULT_MODEL
-  )
+  return pickInstalledOllamaModel(names, DEFAULT_MODEL)
 }
 
 export async function isOllamaRunning() {

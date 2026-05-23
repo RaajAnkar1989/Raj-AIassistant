@@ -38,7 +38,11 @@ export function useJarvisAgent({ onIntent, onReactStep, onError } = {}) {
         else if (state === 'idle') setAgentState(JARVIS_STATES.IDLE)
       })
       client.on('token', (msg) => {
-        fullTextRef.current = msg.full || fullTextRef.current + msg.text
+        if (msg.full != null && msg.full !== '') {
+          fullTextRef.current = msg.full
+        } else if (msg.text) {
+          fullTextRef.current += msg.text
+        }
         setStreamText(fullTextRef.current)
       })
       client.on('sentence', (text) => {

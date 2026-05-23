@@ -17,6 +17,7 @@ export class StreamingVoiceQueue {
     this.playing = false
     this.stopped = false
     this.currentAudio = null
+    this.lastEnqueued = ''
     this.onStart = null
     this.onEnd = null
     this.onSentenceStart = null
@@ -26,12 +27,27 @@ export class StreamingVoiceQueue {
     this.stop()
     this.queue = []
     this.stopped = false
+    this.lastEnqueued = ''
   }
 
   enqueue(text) {
     const t = extractSpeakableText(text) || String(text || '').trim()
     if (!t || this.stopped) return
-    if (this.queue.includes(t)) return
+
+    if (this.lastEnqueued && t.startsWith(this.lastEnqueued) && t.length > this.lastEnqueued.length + 4) {
+      const tail = t.slice(this.lastEnqueued.length).trim()
+      if (!tail || this.queue.includes(tail)) {
+        this.lastEnqueued = t
+        return
+      }
+      this.lastEnqueued = t
+      this.queue.push(tail)
+      void this.pump()
+      return
+    }
+
+    if (t === this.lastEnqueued || this.queue.includes(t)) return
+    this.lastEnqueued = t
     this.queue.push(t)
     void this.pump()
   }

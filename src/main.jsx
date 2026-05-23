@@ -14,9 +14,9 @@ import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '11-wake-fix'
+const APP_SHELL_VERSION = '12-chat-pwa'
 
-/** Clear stale PWA caches — old service workers served deleted JS bundles (blank screen). */
+/** Clear stale PWA caches when the app shell version changes. */
 async function migrateAppShell() {
   const key = 'raj_app_shell_version'
   let prev = null
@@ -27,7 +27,7 @@ async function migrateAppShell() {
   }
   const versionChanged = prev !== APP_SHELL_VERSION
 
-  if ('serviceWorker' in navigator) {
+  if (versionChanged && 'serviceWorker' in navigator) {
     try {
       const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(regs.map((r) => r.unregister()))
@@ -71,8 +71,7 @@ const theme = createTheme({
   },
 })
 
-// Service worker disabled — stale cached index.html pointed at deleted JS (404 blank screen).
-// Re-enable after users have cleared old SW, or use NetworkFirst for navigations only.
+// Service worker registered by vite-plugin-pwa (autoUpdate).
 
 async function boot() {
   try {

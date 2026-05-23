@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Box, CssBaseline } from '@mui/material'
 import { migrateVoiceSettings } from './utils/voiceSettings'
 import { migrateBrainSettings, getBrainProvider } from './constants/aiProviders'
@@ -7,8 +8,28 @@ import { getVoiceBackend } from './constants/elevenlabsAgent'
 
 const AssistantShell = lazy(() => import('./components/AssistantShell'))
 const FreeAssistantHome = lazy(() => import('./components/FreeAssistantHome'))
+const ChatApp = lazy(() => import('./components/chat/ChatApp'))
 
-const App = () => {
+function LoadingScreen({ label = 'Loading Raj…' }) {
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#22d3ee',
+        letterSpacing: 3,
+        fontSize: '0.85rem',
+        bgcolor: '#050810',
+      }}
+    >
+      {label}
+    </Box>
+  )
+}
+
+function VoiceHome() {
   const [backend, setBackend] = useState(() => getVoiceBackend())
 
   useEffect(() => {
@@ -32,27 +53,22 @@ const App = () => {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#050810', overflow: 'hidden' }}>
       <CssBaseline />
-      <Suspense
-        fallback={
-          <Box
-            sx={{
-              minHeight: '100vh',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#22d3ee',
-              letterSpacing: 3,
-              fontSize: '0.85rem',
-            }}
-          >
-            Loading Raj…
-          </Box>
-        }
-      >
+      <Suspense fallback={<LoadingScreen />}>
         <VoiceUI key={backend} />
       </Suspense>
     </Box>
   )
 }
+
+const App = () => (
+  <BrowserRouter>
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route path="/" element={<VoiceHome />} />
+        <Route path="/chat" element={<ChatApp />} />
+      </Routes>
+    </Suspense>
+  </BrowserRouter>
+)
 
 export default App

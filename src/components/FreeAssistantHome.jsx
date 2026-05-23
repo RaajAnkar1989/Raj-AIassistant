@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Box, Typography, IconButton, Collapse } from '@mui/material'
-import { Settings, MicNone, CallEnd } from '@mui/icons-material'
+import { Settings, MicNone, CallEnd, ChatBubbleOutline } from '@mui/icons-material'
+import { useNavigate } from 'react-router-dom'
 import JarvisSettingsPanel from './JarvisSettingsPanel'
 import {
   setListening,
@@ -71,6 +72,7 @@ const SPEECH_ERRORS = {
 
 const FreeAssistantHome = () => {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sessionActive, setSessionActive] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -88,6 +90,9 @@ const FreeAssistantHome = () => {
   const lastCommandTextRef = useRef('')
   const lastCommandAtRef = useRef(0)
   const lastSpokenTextRef = useRef('')
+  const agentSpokenRef = useRef('')
+  const lastHeardSpeechRef = useRef('')
+  const lastHeardAtRef = useRef(0)
   const lastActionRef = useRef({ key: '', at: 0 })
   const resumeTimerRef = useRef(null)
   const cancelAgentRef = useRef(null)
@@ -113,20 +118,14 @@ const FreeAssistantHome = () => {
     if (!intentData?.intent) return
     const intent = intentData.intent
     if (intent === 'general_chat') return
-    await executeIntent(intent, intentData, async (line) => {
-      if (intent === 'general_chat') return
-      if (line?.trim()) streamingVoiceQueue.enqueue(line)
-    })
+    await executeIntent(intent, intentData, async () => {})
   }, [])
 
   const handleReactStep = useCallback(async (intentData) => {
     if (!intentData?.intent) return 'skipped'
     let result = 'Done, Boss.'
     await executeIntent(intentData.intent, intentData, async (line) => {
-      if (line?.trim()) {
-        result = line
-        streamingVoiceQueue.enqueue(line)
-      }
+      if (line?.trim()) result = line
     })
     return result
   }, [])
@@ -257,11 +256,22 @@ const FreeAssistantHome = () => {
       speakingRef.current = true
       dispatch(setSpeaking(true))
     }
+    streamingVoiceQueue.onSentenceStart = (sentence) => {
+      const chunk = String(sentence || '').trim()
+      if (!chunk) return
+      agentSpokenRef.current = `${agentSpokenRef.current} ${chunk}`.trim().slice(-600)
+      lastSpokenTextRef.current = agentSpokenRef.current
+      echoGuardUntilRef.current = Date.now() + estimateEchoCooldownMs(chunk, 700)
+    }
     streamingVoiceQueue.onEnd = () => {
       speakingRef.current = false
       dispatch(setSpeaking(false))
       processingRef.current = false
-      scheduleResumeListening(200)
+      const spoken = agentSpokenRef.current || lastSpokenTextRef.current
+      if (spoken) lastSpokenTextRef.current = spoken
+      echoGuardUntilRef.current = Date.now() + estimateEchoCooldownMs(spoken, 900)
+      agentSpokenRef.current = ''
+      scheduleResumeListening(Math.max(600, estimateEchoCooldownMs(spoken, 350)))
     }
   }, [dispatch, scheduleResumeListening])
 
@@ -293,6 +303,9 @@ const FreeAssistantHome = () => {
     clearResumeTimer()
     echoGuardUntilRef.current = 0
     lastSpokenTextRef.current = ''
+    agentSpokenRef.current = ''
+    lastHeardSpeechRef.current = ''
+    lastHeardAtRef.current = 0
     lastCommandTextRef.current = ''
     lastCommandAtRef.current = 0
     lastActionRef.current = { key: '', at: 0 }
@@ -307,13 +320,32 @@ const FreeAssistantHome = () => {
 
     const guardActive = Date.now() < echoGuardUntilRef.current
     if (guardActive && looksLikeAssistantEcho(text, lastSpokenTextRef.current, true)) return false
+    if (speakingRef.current && looksLikeAssistantEcho(text, lastSpokenTextRef.current, true)) return false
     if (isLikelyNoiseCommand(text)) return false
 
     const now = Date.now()
-    if (text.toLowerCase() === lastCommandTextRef.current.toLowerCase() && now - lastCommandAtRef.current < 2500) {
+    if (text.toLowerCase() === lastCommandTextRef.current.toLowerCase() && now - lastCommandAtRef.current < 4500) {
       return false
     }
     return true
+  }, [])
+
+  const isDuplicateHeard = useCallback((text) => {
+    const norm = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    if (!norm) return true
+    const prev = lastHeardSpeechRef.current
+    const elapsed = Date.now() - lastHeardAtRef.current
+    const echoActive = speakingRef.current || Date.now() < echoGuardUntilRef.current
+
+    if (echoActive && looksLikeAssistantEcho(norm, lastSpokenTextRef.current, true)) return true
+
+    if (prev && elapsed < 5000 && norm === prev) return true
+    if (prev && elapsed < 4000 && norm.startsWith(prev) && norm.length - prev.length < 24) return true
+    if (prev && elapsed < 4000 && prev.startsWith(norm) && prev.length - norm.length < 24) return true
+
+    lastHeardSpeechRef.current = norm
+    lastHeardAtRef.current = Date.now()
+    return false
   }, [])
 
   const speak = useCallback(
@@ -384,6 +416,10 @@ const FreeAssistantHome = () => {
     (text, { isFinal = true } = {}) => {
       const heard = String(text || '').trim()
       if (!heard) return
+      if (isFinal && isDuplicateHeard(heard)) return
+
+      const echoWindow = speakingRef.current || processingRef.current || Date.now() < echoGuardUntilRef.current
+      if (echoWindow && looksLikeAssistantEcho(heard, lastSpokenTextRef.current, true)) return
 
       const { enabled } = getWakeConfig()
       const wake = classifyWakeInput(heard, {
@@ -423,13 +459,14 @@ const FreeAssistantHome = () => {
         return
       }
 
+      if (speakingRef.current || processingRef.current) return
       if (!isFinal) return
-      dispatch(setTranscript(heard))
       if (!shouldAcceptCommandRef.current(heard)) return
+      dispatch(setTranscript(heard))
       const cmdGen = ++commandGenerationRef.current
       handleCommandRef.current(stripWakeWord(heard) || heard, cmdGen)
     },
-    [dispatch, speak]
+    [dispatch, speak, isDuplicateHeard]
   )
 
   const handleCommand = useCallback(
@@ -444,6 +481,8 @@ const FreeAssistantHome = () => {
 
       try {
         if (useStreamingAgent) {
+          stopRecognition()
+          agentSpokenRef.current = ''
           dispatch(setListening(false))
           await sendAgentMessage(command)
           return
@@ -612,11 +651,15 @@ const FreeAssistantHome = () => {
 
       const guardActive = Date.now() < echoGuardUntilRef.current
       if (
-        guardActive &&
+        (guardActive || speakingRef.current || processingRef.current) &&
         !containsWakeWord(heard) &&
         looksLikeAssistantEcho(heard, lastSpokenTextRef.current, true)
       ) {
         return
+      }
+
+      if (speakingRef.current || processingRef.current) {
+        if (!containsWakeWord(heard)) return
       }
 
       if (final.trim()) {
@@ -786,6 +829,10 @@ const FreeAssistantHome = () => {
       <div className="jarvis-grid" aria-hidden />
       <div className="jarvis-glow jarvis-glow--top" aria-hidden />
       <div className="jarvis-glow jarvis-glow--bottom" aria-hidden />
+
+      <IconButton className="jarvis-chat-btn" onClick={() => navigate('/chat')} aria-label="Open Raj Chat">
+        <ChatBubbleOutline sx={{ fontSize: 22 }} />
+      </IconButton>
 
       <IconButton className="jarvis-settings-btn" onClick={() => setSettingsOpen(true)} aria-label="Settings">
         <Settings sx={{ fontSize: 22 }} />

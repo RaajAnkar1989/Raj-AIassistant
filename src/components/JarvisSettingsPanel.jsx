@@ -64,7 +64,7 @@ const JarvisSettingsPanel = ({ open, onClose, agentStreaming, onAgentStreamingCh
   const [connectionType, setConnectionType] = useState('websocket')
   const [voiceBackend, setVoiceBackendChoice] = useState('free')
   const [brainProvider, setBrainProviderChoice] = useState('ollama')
-  const [brainModel, setBrainModelChoice] = useState('llama3.1:8b')
+  const [brainModel, setBrainModelChoice] = useState('llama3.2:latest')
   const [brainApiKey, setBrainApiKey] = useState('')
   const [googleId, setGoogleId] = useState('')
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false })
@@ -152,7 +152,7 @@ const JarvisSettingsPanel = ({ open, onClose, agentStreaming, onAgentStreamingCh
         const linked = await syncOllamaFromLocal({ force: true })
         setOllamaLinked(linked.running ? { models: linked.models } : null)
         if (!linked.running) {
-          toast.error('Ollama not running. In Terminal: ollama serve — then: ollama pull llama3.1:8b')
+          toast.error('Ollama not running. In Terminal: ollama serve — then: ollama pull llama3.2:latest')
           return
         }
         setBrainModelChoice(linked.model)
@@ -485,7 +485,7 @@ const JarvisSettingsPanel = ({ open, onClose, agentStreaming, onAgentStreamingCh
             <Typography variant="caption" sx={{ color: ollamaLinked ? '#4ade80' : '#fbbf24', display: 'block', lineHeight: 1.45 }}>
               {ollamaLinked
                 ? `Ollama running · ${ollamaLinked.models?.length || 0} model(s) installed · no API key needed`
-                : 'Start Ollama: ollama serve — then: ollama pull llama3.1:8b'}
+                : 'Start Ollama: ollama serve — then: ollama pull llama3.2:latest'}
             </Typography>
           </Box>
         ) : brainProvider !== 'keyword' ? (

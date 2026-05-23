@@ -5,19 +5,12 @@ import {
   canUseOllama,
   isBrainUserLocked,
 } from '../constants/aiProviders'
+import { pickInstalledOllamaModel } from '../utils/ollamaModelPick'
+import { getCachedOllamaModels, setCachedOllamaModels } from '../utils/ollamaModelsCache'
 
 const CACHE_KEY = 'raj_ollama_sync_at'
-const MODELS_KEY = 'raj_ollama_models'
 
-export function getCachedOllamaModels() {
-  try {
-    const raw = sessionStorage.getItem(MODELS_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+export { getCachedOllamaModels }
 
 /** Probe local Ollama and cache installed model names (dev only). */
 export async function syncOllamaFromLocal({ force = false } = {}) {
@@ -46,28 +39,20 @@ export async function syncOllamaFromLocal({ force = false } = {}) {
     if (!res.ok) throw new Error('Ollama not reachable')
     const data = await res.json()
     const models = (data.models || []).map((m) => m.name).filter(Boolean)
-    const preferred =
-      models.find((n) => /^llama3\.1:8b$/i.test(n) || /llama3\.1.*8b/i.test(n)) ||
-      models.find((n) => /llama3\.1/i.test(n)) ||
-      models.find((n) => /llama3/i.test(n)) ||
-      models.find((n) => /qwen/i.test(n))
     const envModel = import.meta.env.VITE_OLLAMA_MODEL?.trim()
-    const model =
-      (envModel && models.includes(envModel) && envModel) ||
-      preferred ||
-      models[0] ||
-      envModel ||
-      'llama3.1:8b'
+    const current = getBrainModel('ollama')
+    const model = pickInstalledOllamaModel(models, envModel || current)
 
     try {
-      sessionStorage.setItem(MODELS_KEY, JSON.stringify(models))
+      setCachedOllamaModels(models)
       sessionStorage.setItem(CACHE_KEY, String(Date.now()))
       sessionStorage.setItem('raj_ollama_running', '1')
     } catch {}
 
-    if (!isBrainUserLocked()) {
+    const installedMismatch = models.length && !models.includes(current)
+    if (!isBrainUserLocked() || installedMismatch) {
       setBrainProvider('ollama')
-      setBrainModel(model)
+      if (model !== current) setBrainModel(model)
     }
 
     return { running: true, models, model, cached: false }

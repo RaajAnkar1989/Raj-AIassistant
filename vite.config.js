@@ -22,19 +22,34 @@ export default defineConfig(({ command }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: false,
-        selfDestroying: true,
+        injectRegister: 'auto',
         includeAssets: ['favicon.ico', 'jarvis-icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'Jarvis Assistant',
-          short_name: 'Jarvis',
-          description: 'Jarvis-style voice assistant — speak to Raj, opens real iPhone apps',
+          name: 'Raj Assistant',
+          short_name: 'Raj',
+          description: 'Jarvis voice assistant and Raj Chat — local AI on your Mac',
           theme_color: '#050810',
           background_color: '#050810',
           display: 'standalone',
           orientation: 'portrait',
           scope: '/',
           start_url: '/',
+          shortcuts: [
+            {
+              name: 'Jarvis Voice',
+              short_name: 'Voice',
+              description: 'Wake-word voice assistant',
+              url: '/',
+              icons: [{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' }],
+            },
+            {
+              name: 'Raj Chat',
+              short_name: 'Chat',
+              description: 'Natural chat with attachments',
+              url: '/chat',
+              icons: [{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' }],
+            },
+          ],
           icons: [
             {
               src: 'pwa-192x192.png',
@@ -51,8 +66,9 @@ export default defineConfig(({ command }) => {
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,ico,png,svg}'],
-          navigateFallback: null,
+          globPatterns: ['**/*.{js,css,ico,png,svg,html}'],
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//, /^\/\.netlify\//],
           runtimeCaching: [
             {
               urlPattern: ({ request }) => request.mode === 'navigate',
