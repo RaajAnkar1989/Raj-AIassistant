@@ -1,4 +1,4 @@
-import { resolveBrainConfig } from '../../constants/aiProviders'
+import { resolveBrainConfig, canUseOllama } from '../../constants/aiProviders'
 import ttsService, { unlockAudioPlayback } from '../../services/ttsService'
 import {
   getTtsOptions,
@@ -249,7 +249,11 @@ export const processVoiceCommand = createAsyncThunk(
       }
 
       if (provider !== 'keyword' && !aiBrainService.hasBrain() && !fallback && !messaging) {
-        return rejectWithValue('Add a free Gemini or Groq API key in Settings → AI Brain.')
+        return rejectWithValue(
+          canUseOllama()
+            ? 'Ollama brain not connected. Run ollama serve on your Mac, then refresh.'
+            : 'Add a free Gemini or Groq API key in Settings → AI Brain.',
+        )
       }
 
       return buildCommandResult(command, merged.intent, merged, Boolean(aiData && !quick))

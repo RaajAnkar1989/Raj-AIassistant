@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Box, Typography, IconButton, Collapse, Fade } from '@mui/material'
+import { Box, Typography, IconButton, Collapse } from '@mui/material'
 import { Settings, MicNone, CallEnd } from '@mui/icons-material'
 import JarvisSettingsPanel from './JarvisSettingsPanel'
 import {
@@ -52,11 +52,9 @@ import { getTtsOptions, migrateVoiceSettings } from '../utils/voiceSettings'
 import { isMobileDevice, isIOSDevice } from '../utils/device'
 import { useBatteryReminder } from '../hooks/useBatteryReminder'
 import { TIMER_DONE_EVENT, restoreVoiceTimers } from '../services/timerService'
-import { buildBossWelcomeBriefing } from '../services/bossBriefing'
 import {
   classifyWakeInput,
   containsWakeWord,
-  ENGAGED_WINDOW_MS,
   getWakeConfig,
   stripWakeWord,
 } from '../utils/wakeWord'
@@ -64,10 +62,6 @@ import { useJarvisAgent, JARVIS_STATES } from '../hooks/useJarvisAgent'
 import { isAgentModePreferred, setAgentModePreferred, probeAgentServer } from '../services/jarvisAgentClient'
 import { streamingVoiceQueue } from '../services/streamingVoiceService'
 import toast from 'react-hot-toast'
-
-function containsWakeWordForAccept(text) {
-  return containsWakeWord(text)
-}
 
 const SPEECH_ERRORS = {
   network: 'Browser speech failed (common on iPhone). Use HTTPS and ChatGPT key — Raj switches to Whisper on phone.',
@@ -96,7 +90,7 @@ const FreeAssistantHome = () => {
   const lastSpokenTextRef = useRef('')
   const lastActionRef = useRef({ key: '', at: 0 })
   const resumeTimerRef = useRef(null)
-  const engagedUntilRef = useRef(0)
+  const cancelAgentRef = useRef(null)
   const [sessionStartedAt, setSessionStartedAt] = useState(null)
   const [sttMode, setSttMode] = useState('webspeech')
   const [brainInfo, setBrainInfo] = useState(() => getActiveProviderInfo())
@@ -118,7 +112,7 @@ const FreeAssistantHome = () => {
     if (meta?.reactStep !== undefined && !meta?.final) return
     if (!intentData?.intent) return
     const intent = intentData.intent
-    if (intent === 'general_chat' && meta?.final) return
+    if (intent === 'general_chat') return
     await executeIntent(intent, intentData, async (line) => {
       if (intent === 'general_chat') return
       if (line?.trim()) streamingVoiceQueue.enqueue(line)
@@ -139,7 +133,6 @@ const FreeAssistantHome = () => {
 
   const {
     agentState,
-    streamText,
     agentOnline,
     routeInfo,
     reactInfo,
@@ -156,6 +149,10 @@ const FreeAssistantHome = () => {
   useEffect(() => {
     probeAgentServer().then((info) => setAgentServerOk(Boolean(info.ok)))
   }, [sessionActive])
+
+  useEffect(() => {
+    cancelAgentRef.current = cancelAgent
+  }, [cancelAgent])
 
   useEffect(() => {
     if (!sessionActive) return
@@ -308,10 +305,6 @@ const FreeAssistantHome = () => {
     if (!text) return false
     if (speakingRef.current || processingRef.current) return false
 
-    const { enabled } = getWakeConfig()
-    const engaged = Date.now() < engagedUntilRef.current
-    if (enabled && !engaged && !containsWakeWordForAccept(text)) return false
-
     const guardActive = Date.now() < echoGuardUntilRef.current
     if (guardActive && looksLikeAssistantEcho(text, lastSpokenTextRef.current, true)) return false
     if (isLikelyNoiseCommand(text)) return false
@@ -387,32 +380,12 @@ const FreeAssistantHome = () => {
     return () => window.removeEventListener(TIMER_DONE_EVENT, onTimerDone)
   }, [sessionActive, speakProactive])
 
-  const deliverBossWelcome = useCallback(
-    async (cmdGen) => {
-      if (cmdGen !== commandGenerationRef.current) return
-      processingRef.current = true
-      try {
-        const briefing = await buildBossWelcomeBriefing()
-        if (cmdGen !== commandGenerationRef.current) return
-        await speak(briefing, cmdGen)
-      } finally {
-        if (cmdGen === commandGenerationRef.current) {
-          processingRef.current = false
-        }
-      }
-    },
-    [speak]
-  )
-
   const handleIncomingSpeech = useCallback(
     (text, { isFinal = true } = {}) => {
       const heard = String(text || '').trim()
       if (!heard) return
 
-      dispatch(setTranscript(heard))
-
       const { enabled } = getWakeConfig()
-      const engaged = Date.now() < engagedUntilRef.current
       const wake = classifyWakeInput(heard, {
         speaking: speakingRef.current,
         processing: processingRef.current,
@@ -420,41 +393,43 @@ const FreeAssistantHome = () => {
 
       if (wake.action === 'interrupt') {
         ttsService.stop()
+        streamingVoiceQueue.stop()
+        cancelAgentRef.current?.()
         speakingRef.current = false
+        processingRef.current = false
         dispatch(setSpeaking(false))
         commandGenerationRef.current += 1
-        engagedUntilRef.current = Date.now() + ENGAGED_WINDOW_MS
         const cmdGen = ++commandGenerationRef.current
+        dispatch(setTranscript(''))
         if (wake.command) {
           handleCommandRef.current(wake.command, cmdGen)
         } else {
-          void deliverBossWelcome(cmdGen)
+          void speak('Yes, Boss?', cmdGen)
         }
         return
       }
 
-      if (enabled && !engaged) {
+      if (enabled) {
         if (wake.action === 'none') return
         if (!isFinal) return
-        engagedUntilRef.current = Date.now() + ENGAGED_WINDOW_MS
         const cmdGen = ++commandGenerationRef.current
         if (wake.command) {
+          dispatch(setTranscript(wake.command))
           handleCommandRef.current(wake.command, cmdGen)
         } else {
-          void deliverBossWelcome(cmdGen)
+          dispatch(setTranscript(''))
+          void speak('Yes, Boss?', cmdGen)
         }
         return
       }
 
       if (!isFinal) return
+      dispatch(setTranscript(heard))
       if (!shouldAcceptCommandRef.current(heard)) return
-
-      engagedUntilRef.current = Date.now() + ENGAGED_WINDOW_MS
       const cmdGen = ++commandGenerationRef.current
-      const command = stripWakeWord(heard) || heard
-      handleCommandRef.current(command, cmdGen)
+      handleCommandRef.current(stripWakeWord(heard) || heard, cmdGen)
     },
-    [dispatch, deliverBossWelcome]
+    [dispatch, speak]
   )
 
   const handleCommand = useCallback(
@@ -646,7 +621,7 @@ const FreeAssistantHome = () => {
 
       if (final.trim()) {
         handleIncomingSpeech(final.trim(), { isFinal: true })
-      } else {
+      } else if (!getWakeConfig().enabled) {
         dispatch(setTranscript(heard))
       }
     }
@@ -723,11 +698,10 @@ const FreeAssistantHome = () => {
     setBrainInfo(getActiveProviderInfo())
     migrateVoiceSettings()
     resetVoiceSessionRefs()
-    engagedUntilRef.current = 0
     void restoreVoiceTimers()
 
     if (!hasBrainReady() && getActiveProviderInfo().id !== 'keyword') {
-      toast.error('Brain not linked yet. Pull down to refresh the page — Gemini should auto-connect.', { duration: 8000 })
+      toast.error('Ollama brain not ready. Run ollama serve, then tap mic again.', { duration: 6000 })
       setSettingsOpen(true)
       return
     }
@@ -848,19 +822,22 @@ const FreeAssistantHome = () => {
         <Typography className={`jarvis-status ${isLive ? 'jarvis-status--live' : ''}`}>{statusText}</Typography>
 
         <Collapse in={Boolean(transcript) && sessionActive}>
-          <Fade in>
-            <Typography className="jarvis-transcript-user" sx={{ mt: 1, px: 2, textAlign: 'center' }}>
-              You — {transcript}
-            </Typography>
-          </Fade>
+          <Typography className="jarvis-transcript-user" sx={{ mt: 1, px: 2, textAlign: 'center' }}>
+            {transcript}
+          </Typography>
         </Collapse>
 
-        <Collapse in={Boolean(streamText) && sessionActive && useStreamingAgent}>
-          <Fade in>
-            <Typography className="jarvis-stream-response" sx={{ mt: 1.5, px: 2, textAlign: 'center' }}>
-              {streamText}
-            </Typography>
-          </Fade>
+        <Collapse
+          in={
+            sessionActive &&
+            useStreamingAgent &&
+            agentState === JARVIS_STATES.THINKING &&
+            Boolean(reactInfo?.thought)
+          }
+        >
+          <Typography className="jarvis-stream-response" sx={{ mt: 1.5, px: 2, textAlign: 'center', opacity: 0.75 }}>
+            {reactInfo?.thought}
+          </Typography>
         </Collapse>
       </Box>
 
@@ -877,7 +854,7 @@ const FreeAssistantHome = () => {
           </span>
         </button>
         <Typography className="jarvis-hint">
-          {sessionActive ? 'Say “Jarvis” anytime — try “Jarvis, set a 5 minute timer”' : 'Tap mic · allow microphone when asked'}
+          {sessionActive ? 'Say “Jarvis” to talk · “Jarvis, …” to command · say Jarvis while speaking to interrupt' : 'Tap mic · allow microphone when asked'}
         </Typography>
       </Box>
 

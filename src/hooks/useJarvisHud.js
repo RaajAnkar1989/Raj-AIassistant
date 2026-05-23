@@ -203,21 +203,22 @@ export function useJarvisHud({ sessionActive, sessionStartedAt } = {}) {
   }, [])
 
   useEffect(() => {
+    if (!sessionActive) return undefined
     refreshWeather()
     refreshCalendar()
     refreshEmail()
     refreshTasks()
     const weatherId = setInterval(refreshWeather, 30 * 60 * 1000)
-    const calId = setInterval(refreshCalendar, 5 * 60 * 1000)
-    const mailId = setInterval(refreshEmail, 3 * 60 * 1000)
-    const taskId = setInterval(refreshTasks, 2 * 60 * 1000)
+    const calId = setInterval(refreshCalendar, 10 * 60 * 1000)
+    const mailId = setInterval(refreshEmail, 10 * 60 * 1000)
+    const taskId = setInterval(refreshTasks, 10 * 60 * 1000)
     return () => {
       clearInterval(weatherId)
       clearInterval(calId)
       clearInterval(mailId)
       clearInterval(taskId)
     }
-  }, [refreshWeather, refreshCalendar, refreshEmail, refreshTasks])
+  }, [sessionActive, refreshWeather, refreshCalendar, refreshEmail, refreshTasks])
 
   const sessionMs = sessionActive && sessionStartedAt ? Date.now() - sessionStartedAt : 0
   const googleStatus = getGoogleConnectionStatus()

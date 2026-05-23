@@ -3,7 +3,6 @@ import {
   getBrainProvider,
   getProviderApiKey,
   hasBrainReady,
-  canUseGemini,
   canUseOllama,
 } from '../constants/aiProviders'
 import { formatBrainError, formatOpenAIError, isOpenAIQuotaError, markQuotaExceeded } from '../utils/openaiErrors'
@@ -385,25 +384,9 @@ class AiBrainService {
       else if (provider === 'openai') parsed = await callOpenAI(command, apiKey, model)
       else throw new Error('Unknown AI provider')
     } catch (e) {
-      if (provider === 'ollama' && canUseGemini()) {
-        const geminiKey = getProviderApiKey('gemini')
-        if (geminiKey) {
-          console.warn('[Raj] Ollama unavailable, using Gemini fallback:', e?.message)
-          parsed = await callGemini(command, geminiKey, getBrainModel('gemini'))
-        } else {
-          throw e
-        }
-      } else if (provider === 'freellmapi' && canUseOllama()) {
+      if (provider === 'freellmapi' && canUseOllama()) {
         console.warn('[Raj] FreeLLMAPI unavailable, using Ollama:', e?.message)
-        parsed = await callOllama(command, model)
-      } else if (provider === 'freellmapi' && canUseGemini()) {
-        const geminiKey = getProviderApiKey('gemini')
-        if (geminiKey) {
-          console.warn('[Raj] FreeLLMAPI unavailable, using Gemini:', e?.message)
-          parsed = await callGemini(command, geminiKey, getBrainModel())
-        } else {
-          throw e
-        }
+        parsed = await callOllama(command, getBrainModel('ollama'))
       } else {
         throw e
       }

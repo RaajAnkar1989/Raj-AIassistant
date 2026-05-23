@@ -1,5 +1,6 @@
 import { DEFAULT_FREE_VOICE } from '../constants/freeVoices'
 import { getTtsOptions, loadVoicePro, resolveWorkingEngine } from '../utils/voiceSettings'
+import { extractSpeakableText } from '../utils/speechText'
 import { getVoiceBackend } from '../constants/elevenlabsStorage'
 import { isMobileDevice } from '../utils/device'
 
@@ -487,12 +488,14 @@ class TtsService {
 
   async speak(text, options = {}) {
     if (!text?.trim()) return { engine: null }
+    const spokenInput = extractSpeakableText(text) || String(text || '').trim()
+    if (!spokenInput) return { engine: null }
     const pro = loadVoicePro()
     const userRequested = options.engine ?? pro.ttsEngine ?? 'auto'
     const opts = { ...getTtsOptions(options), ...options }
     const freeMode = getVoiceBackend() === 'free'
     const primary = resolveWorkingEngine(userRequested, pro)
-    const spokenText = trimForSpeech(text)
+    const spokenText = trimForSpeech(spokenInput)
 
     const freeChain = ['chatterbox', 'edge', 'web-speech']
     let chain = [primary, ...freeChain.filter((e) => e !== primary)]

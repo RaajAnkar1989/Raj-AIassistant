@@ -1,4 +1,4 @@
-import { parseJsonContent } from '../utils/jsonParse.mjs'
+import { parseJsonContent, speechFromModelOutput } from '../utils/jsonParse.mjs'
 
 /** Parse agent JSON and normalize tool payload for frontend actionRouter */
 export function parseAgentResponse(raw) {
@@ -12,7 +12,10 @@ export function parseAgentResponse(raw) {
 }
 
 export function speechFromIntent(intent) {
-  if (intent.responseText) return String(intent.responseText).trim()
+  if (intent.responseText) {
+    const line = speechFromModelOutput(intent.responseText)
+    if (line) return line
+  }
   if (intent.intent === 'help') {
     return 'Try: play a song, draft an email, set a timer, or ask me anything, Boss.'
   }

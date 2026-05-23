@@ -360,6 +360,13 @@ export function migrateBrainSettings() {
 
   resolveBrainConfig({ persist: !isBrainUserLocked() })
 
+  if (canUseOllama() && !isBrainUserLocked()) {
+    const current = localStorage.getItem(BRAIN_PROVIDER_KEY)
+    if (current === 'gemini' || current === 'freellmapi') {
+      setBrainProvider('ollama')
+    }
+  }
+
   if (localStorage.getItem(BRAIN_PROVIDER_KEY) === 'gemini') {
     const model = localStorage.getItem(BRAIN_MODEL_KEY)
     if (model === 'gemini-2.0-flash' || model === 'gemini-1.5-flash') {

@@ -3,6 +3,7 @@
  */
 import { DEFAULT_FREE_VOICE } from '../constants/freeVoices'
 import { getTtsOptions } from '../utils/voiceSettings'
+import { extractSpeakableText } from '../utils/speechText'
 
 const AGENT_TTS_URL = import.meta.env.DEV
   ? '/api/agent/tts'
@@ -28,7 +29,7 @@ export class StreamingVoiceQueue {
   }
 
   enqueue(text) {
-    const t = String(text || '').trim()
+    const t = extractSpeakableText(text) || String(text || '').trim()
     if (!t || this.stopped) return
     if (this.queue.includes(t)) return
     this.queue.push(t)

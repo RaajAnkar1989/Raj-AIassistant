@@ -14,7 +14,7 @@ import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '10-sw-fix'
+const APP_SHELL_VERSION = '11-wake-fix'
 
 /** Clear stale PWA caches — old service workers served deleted JS bundles (blank screen). */
 async function migrateAppShell() {
@@ -49,7 +49,7 @@ async function migrateAppShell() {
     try {
       localStorage.setItem(key, APP_SHELL_VERSION)
     } catch {
-      /* ignore */
+      return true
     }
     if (prev) {
       window.location.reload()
@@ -109,11 +109,25 @@ async function boot() {
   )
 
   // Never block first paint on local Ollama / FreeLLMAPI probes (Netlify can hang 20s+).
-  if (import.meta.env.DEV || import.meta.env.VITE_OLLAMA_ENABLED === '1' || import.meta.env.VITE_OLLAMA_ENABLED === 'true') {
-    void syncOllamaFromLocal().catch(() => {})
-  }
+  const ollamaEnabled =
+    import.meta.env.DEV ||
+    import.meta.env.VITE_OLLAMA_ENABLED === '1' ||
+    import.meta.env.VITE_OLLAMA_ENABLED === 'true'
 
-  if (import.meta.env.DEV) {
+  if (ollamaEnabled) {
+    void syncOllamaFromLocal()
+      .then((ollama) => {
+        if (ollama?.running && import.meta.env.DEV) return
+        if (import.meta.env.DEV) {
+          void syncFreeLLMAPIFromLocal().catch(() => {})
+        }
+      })
+      .catch(() => {
+        if (import.meta.env.DEV) {
+          void syncFreeLLMAPIFromLocal().catch(() => {})
+        }
+      })
+  } else if (import.meta.env.DEV) {
     void syncFreeLLMAPIFromLocal().catch(() => {})
   }
 }

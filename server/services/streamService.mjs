@@ -11,11 +11,37 @@ import {
 } from './memoryService.mjs'
 import { extractSentences, synthesizeSentence, splitForImmediateTts } from './ttsService.mjs'
 import { runReactLoop } from './reactService.mjs'
-import { extractPartialResponseText } from '../utils/jsonParse.mjs'
+import { extractPartialResponseText, speechFromModelOutput, tryParseIntent } from '../utils/jsonParse.mjs'
 
 function send(ws, payload) {
   if (ws.readyState !== 1) return
   ws.send(JSON.stringify(payload))
+}
+
+function streamSpeechToClient(ws, buffer, lastSentRef) {
+  const speech = buffer.trim().startsWith('{')
+    ? extractPartialResponseText(buffer) || ''
+    : buffer
+
+  if (!speech || speech.length <= lastSentRef.length + 5) return lastSentRef
+
+  const delta = speech.slice(lastSentRef.length)
+  const { sentences } = extractSentences(delta, { minLen: 6 })
+  for (const sentence of sentences) {
+    const utterance = (lastSentRef + sentence).trim()
+    if (utterance.length > lastSentRef.length) {
+      lastSentRef = utterance
+      send(ws, { type: 'sentence', text: utterance })
+    }
+  }
+  return lastSentRef
+}
+
+function flushSpeechTail(ws, buffer, lastSentRef) {
+  const speech = speechFromModelOutput(buffer)
+  if (!speech || speech.length <= lastSentRef.length) return lastSentRef
+  send(ws, { type: 'sentence', text: speech })
+  return speech
 }
 
 function buildMessages(system, history, userText) {
@@ -45,8 +71,7 @@ async function streamChatResponse({ ws, models, route, userText, history, memory
   const messages = buildMessages(system, history, userText)
 
   let buffer = ''
-  let spoken = ''
-  let pendingTts = ''
+  let lastSentSpeech = ''
 
   send(ws, { type: 'state', state: 'thinking', model, mode: 'chat' })
 
@@ -58,29 +83,17 @@ async function streamChatResponse({ ws, models, route, userText, history, memory
     onToken: (full, delta) => {
       buffer = full
       send(ws, { type: 'token', text: delta, full })
-      pendingTts += delta
-      const { sentences, rest } = extractSentences(pendingTts, { minLen: 10 })
-      pendingTts = rest
-      for (const sentence of sentences) {
-        if (sentence.length <= spoken.length) continue
-        const newPart = sentence.slice(spoken.length).trim()
-        if (newPart) {
-          spoken = sentence
-          send(ws, { type: 'sentence', text: sentence })
-        }
-      }
+      lastSentSpeech = streamSpeechToClient(ws, buffer, lastSentSpeech)
     },
   })
 
-  const tail = pendingTts.trim()
-  if (tail && tail.length > spoken.length) {
-    send(ws, { type: 'sentence', text: tail })
-  }
+  lastSentSpeech = flushSpeechTail(ws, buffer, lastSentSpeech)
 
-  await saveExchange(userText, { intent: 'general_chat', responseText: buffer.trim() })
-  send(ws, { type: 'intent', data: { intent: 'general_chat', responseText: buffer.trim() } })
+  const intent = tryParseIntent(buffer)
+  await saveExchange(userText, intent)
+  send(ws, { type: 'intent', data: intent })
   send(ws, { type: 'done', mode: 'chat' })
-  return { intent: 'general_chat', responseText: buffer.trim() }
+  return intent
 }
 
 async function runAgentJson({ ws, models, route, userText, history, memorySection, signal, tier = 'fast' }) {
@@ -101,20 +114,7 @@ async function runAgentJson({ ws, models, route, userText, history, memorySectio
     onToken: (full, delta) => {
       buffer = full
       send(ws, { type: 'token', text: delta, full })
-      const partial = extractPartialResponseText(buffer)
-      if (partial && partial.length > lastSentSpeech.length + 8) {
-        const { sentences, rest } = extractSentences(partial, { minLen: 8 })
-        for (const sentence of sentences) {
-          if (sentence.length > lastSentSpeech.length) {
-            lastSentSpeech = sentence
-            send(ws, { type: 'sentence', text: sentence })
-          }
-        }
-        if (rest.trim().length > 20) {
-          send(ws, { type: 'sentence', text: rest.trim() })
-          lastSentSpeech = rest.trim()
-        }
-      }
+      lastSentSpeech = streamSpeechToClient(ws, buffer, lastSentSpeech)
     },
   })
 
@@ -131,8 +131,10 @@ async function runAgentJson({ ws, models, route, userText, history, memorySectio
   }
 
   const speech = speechFromIntent(intent)
+  lastSentSpeech = flushSpeechTail(ws, speech, lastSentSpeech)
   for (const sentence of splitForImmediateTts(speech)) {
     if (sentence.length > lastSentSpeech.length) {
+      lastSentSpeech = sentence
       send(ws, { type: 'sentence', text: sentence })
     }
   }

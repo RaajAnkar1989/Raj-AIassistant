@@ -16,3 +16,34 @@ export function extractPartialResponseText(buffer) {
     return m[1]
   }
 }
+
+/** Plain speech only — never read raw JSON aloud */
+export function speechFromModelOutput(raw) {
+  const text = String(raw || '').trim()
+  if (!text) return ''
+  if (text.startsWith('{')) {
+    try {
+      const data = parseJsonContent(text)
+      const line = data.responseText || data.message || data.reply || ''
+      if (line) return String(line).trim()
+    } catch {
+      const partial = extractPartialResponseText(text)
+      if (partial) return String(partial).trim()
+    }
+    return ''
+  }
+  return text
+}
+
+export function tryParseIntent(raw) {
+  try {
+    const data = parseJsonContent(raw)
+    return {
+      ...data,
+      intent: data.intent || data.action || 'general_chat',
+      responseText: speechFromModelOutput(raw),
+    }
+  } catch {
+    return { intent: 'general_chat', responseText: speechFromModelOutput(raw) || String(raw || '').trim() }
+  }
+}

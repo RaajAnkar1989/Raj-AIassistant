@@ -85,10 +85,30 @@ async function fetchJson(path) {
   return res.json()
 }
 
+function isOllamaRunningLocally() {
+  try {
+    return sessionStorage.getItem('raj_ollama_running') === '1'
+  } catch {
+    return false
+  }
+}
+
 /** Pull unified key (+ provider key count) from env, hosted FreeLLMAPI, or local dev. */
 export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
   if (!isBrainUserLocked()) {
     resolveBrainConfig({ persist: false })
+  }
+
+  // Local Ollama wins — FreeLLMAPI routes through cloud keys (often Gemini quota).
+  if (canUseOllama() && isOllamaRunningLocally()) {
+    return {
+      apiKey: '',
+      providerKeyCount: null,
+      cached: true,
+      fromEnv: false,
+      provider: 'ollama',
+      skipped: true,
+    }
   }
 
   if (canUseGemini() && !canUseFreeLLMAPI()) {
@@ -177,7 +197,7 @@ export async function syncFreeLLMAPIFromLocal({ force = false } = {}) {
   }
 
   setProviderApiKey('freellmapi', unified)
-  if (!isBrainUserLocked()) {
+  if (!isBrainUserLocked() && !(canUseOllama() && isOllamaRunningLocally())) {
     setBrainProvider('freellmapi')
     setBrainModel('auto')
   }
