@@ -21,6 +21,8 @@ export default defineConfig(({ command }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: false,
+        selfDestroying: true,
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
         manifest: {
           name: 'Raj Assistant',
@@ -46,8 +48,17 @@ export default defineConfig(({ command }) => {
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          globPatterns: ['**/*.{js,css,ico,png,svg}'],
+          navigateFallback: null,
           runtimeCaching: [
+            {
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'raj-pages',
+                networkTimeoutSeconds: 5,
+              },
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',

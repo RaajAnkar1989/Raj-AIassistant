@@ -14,29 +14,44 @@ import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '9-boot-fix'
+const APP_SHELL_VERSION = '10-sw-fix'
 
-/** Old PWA/service worker caches served the dashboard UI — clear them once. */
+/** Clear stale PWA caches — old service workers served deleted JS bundles (blank screen). */
 async function migrateAppShell() {
   const key = 'raj_app_shell_version'
-  const prev = localStorage.getItem(key)
+  let prev = null
+  try {
+    prev = localStorage.getItem(key)
+  } catch {
+    /* private mode */
+  }
+  const versionChanged = prev !== APP_SHELL_VERSION
 
   if ('serviceWorker' in navigator) {
-    const regs = await navigator.serviceWorker.getRegistrations()
-    const shouldPurge = import.meta.env.DEV || (prev && prev !== APP_SHELL_VERSION)
-    if (shouldPurge) {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(regs.map((r) => r.unregister()))
+    } catch {
+      /* ignore */
     }
   }
 
-  if ('caches' in window && (import.meta.env.DEV || (prev && prev !== APP_SHELL_VERSION))) {
-    const names = await caches.keys()
-    await Promise.all(names.map((n) => caches.delete(n)))
+  if (versionChanged && 'caches' in window) {
+    try {
+      const names = await caches.keys()
+      await Promise.all(names.map((n) => caches.delete(n)))
+    } catch {
+      /* ignore */
+    }
   }
 
-  if (prev !== APP_SHELL_VERSION) {
-    localStorage.setItem(key, APP_SHELL_VERSION)
-    if (prev && prev !== APP_SHELL_VERSION) {
+  if (versionChanged) {
+    try {
+      localStorage.setItem(key, APP_SHELL_VERSION)
+    } catch {
+      /* ignore */
+    }
+    if (prev) {
       window.location.reload()
       return false
     }
@@ -56,11 +71,8 @@ const theme = createTheme({
   },
 })
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
-  })
-}
+// Service worker disabled — stale cached index.html pointed at deleted JS (404 blank screen).
+// Re-enable after users have cleared old SW, or use NetworkFirst for navigations only.
 
 async function boot() {
   try {

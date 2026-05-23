@@ -14,9 +14,36 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet" />
     <title>Raj Assistant</title>
+    <script>
+      (function () {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (r) {
+              r.unregister()
+            })
+          })
+        }
+      })()
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        style="
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #050810;
+          color: #22d3ee;
+          font-family: Inter, system-ui, sans-serif;
+          letter-spacing: 0.15em;
+          font-size: 0.85rem;
+        "
+      >
+        Loading Jarvis…
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
