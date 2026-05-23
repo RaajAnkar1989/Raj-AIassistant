@@ -12,13 +12,25 @@ class GisGmailService {
     this.tokenExpiryMs = null
     try {
       const raw =
-        sessionStorage.getItem('google_access_token') ||
-        sessionStorage.getItem('gis_gmail_token')
+        (typeof sessionStorage !== 'undefined' &&
+          (sessionStorage.getItem('google_access_token') || sessionStorage.getItem('gis_gmail_token'))) ||
+        (typeof localStorage !== 'undefined' && localStorage.getItem('google_access_token'))
       const stored = raw ? JSON.parse(raw) : null
-      if (stored?.token && stored?.expiry) {
+      if (stored?.token && stored?.expiry && Date.now() < stored.expiry - 30000) {
         this.accessToken = stored.token
         this.tokenExpiryMs = stored.expiry
       }
+    } catch {}
+  }
+
+  persistToken(token, expiry) {
+    this.accessToken = token
+    this.tokenExpiryMs = expiry
+    const payload = JSON.stringify({ token, expiry })
+    try {
+      sessionStorage.setItem('google_access_token', payload)
+      sessionStorage.setItem('gis_gmail_token', payload)
+      localStorage.setItem('google_access_token', payload)
     } catch {}
   }
 
@@ -78,11 +90,9 @@ class GisGmailService {
           scope: scopes.join(' '),
           callback: (response) => {
             if (response && response.access_token) {
-              this.accessToken = response.access_token
-              // GIS does not always return expires_in here; set to 1 hour by default
               const expiresIn = typeof response.expires_in === 'number' ? response.expires_in : 3600
-              this.tokenExpiryMs = Date.now() + expiresIn * 1000
-              try { sessionStorage.setItem('gis_gmail_token', JSON.stringify({ token: this.accessToken, expiry: this.tokenExpiryMs })) } catch {}
+              const expiry = Date.now() + expiresIn * 1000
+              this.persistToken(response.access_token, expiry)
               resolve(this.accessToken)
             } else {
               reject(new Error('No access token received'))
@@ -341,15 +351,13 @@ class GisGmailService {
   }
 
   async createDraft({ to, subject, body }) {
-    await this.requestAccessToken(
-      [
-        'https://www.googleapis.com/auth/gmail.compose',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/gmail.send',
-      ],
-      { prompt: 'none' }
-    )
-    const token = await this.ensureAccessToken({ allowInteractive: true })
+    if (!this.hasValidToken()) {
+      await this.ensureAccessToken({ allowInteractive: false })
+    }
+    if (!this.hasValidToken()) {
+      throw new Error('Gmail not connected. Connect Google in Settings first.')
+    }
+    const token = this.accessToken
     const encoded = this.toBase64Url(this.buildRawEmail({ to, subject, body }))
     const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
       method: 'POST',

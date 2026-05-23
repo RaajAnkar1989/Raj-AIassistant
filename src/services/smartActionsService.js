@@ -2,7 +2,7 @@
  * Smarter messaging & media actions — Gmail drafts, WhatsApp deep links, YouTube direct play.
  */
 import gisGmailService from './gisGmailService'
-import { getGoogleConnectionStatus, ensureGoogleTokenForTools } from './googleIntegration'
+import { ensureGoogleTokenForTools } from './googleIntegration'
 import { isIOSDevice, isMobileDevice } from '../utils/device'
 import { recordRecentApp } from '../utils/recentApps'
 
@@ -76,9 +76,6 @@ export function openComposeEmailSmart({ to, subject, body, useGmail = true }) {
 }
 
 export async function createGmailDraftSmart({ to, subject, body }) {
-  const status = getGoogleConnectionStatus()
-  if (!status.connected) return { ok: false, reason: 'not_connected' }
-
   try {
     await ensureGoogleTokenForTools()
     const draft = await gisGmailService.createDraft({ to, subject, body })
@@ -90,9 +87,10 @@ export async function createGmailDraftSmart({ to, subject, body }) {
     return { ok: true, draftId, openUrl, via: 'gmail_api' }
   } catch (e) {
     console.warn('[Jarvis] Gmail draft API failed, using compose URL:', e?.message)
-    const ok = openComposeEmailSmart({ to, subject, body, useGmail: true })
-    return { ok, via: 'compose_url', error: e?.message }
   }
+
+  const ok = openComposeEmailSmart({ to, subject, body, useGmail: true })
+  return { ok, via: 'compose_url' }
 }
 
 export function showEmailDraftPreview(detail) {
@@ -129,7 +127,7 @@ export async function openEmailDraftSmart({ to, subject, body, toName, preview =
     }
   }
 
-  return { ok: false, message: `Couldn't open email for ${toName || to}. Connect Google in Settings.` }
+  return { ok: false, message: `Couldn't open email for ${toName || to}. Check Gmail is installed or try again.` }
 }
 
 export function openWhatsAppSmart({ text, phone, displayName }) {
@@ -168,6 +166,18 @@ async function searchYouTubeVideoId(query) {
   const q = String(query || '').trim()
   if (!q) return null
 
+  try {
+    const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`, {
+      signal: AbortSignal.timeout(10000),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.videoId) return data.videoId
+    }
+  } catch {
+    /* fall through to client-side search */
+  }
+
   for (const base of PIPED_INSTANCES) {
     try {
       const url = `${base}/search?q=${encodeURIComponent(q)}&filter=music_songs`
@@ -185,19 +195,17 @@ async function searchYouTubeVideoId(query) {
     }
   }
 
-  try {
-    const res = await fetch(
-      `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,
-      { signal: AbortSignal.timeout(6000) }
-    )
-    if (res.ok) {
-      const html = await res.text()
-      const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/)
-      if (match?.[1]) return match[1]
-    }
-  } catch {}
-
   return null
+}
+
+function buildYouTubePlayUrl(videoId) {
+  if (isIOSDevice()) {
+    return `youtube://watch?v=${videoId}`
+  }
+  if (isMobileDevice()) {
+    return `vnd.youtube://${videoId}?autoplay=1`
+  }
+  return `https://www.youtube.com/watch?v=${videoId}&autoplay=1`
 }
 
 export async function openYouTubePlaySmart(query) {
@@ -215,13 +223,7 @@ export async function openYouTubePlaySmart(query) {
     return { ok: true, message: `Searching YouTube for ${q}, Boss.` }
   }
 
-  let url = `https://www.youtube.com/watch?v=${videoId}&autoplay=1`
-  if (isIOSDevice()) {
-    url = `youtube://watch?v=${videoId}`
-  } else if (isMobileDevice()) {
-    url = `vnd.youtube://${videoId}?autoplay=1`
-  }
-
+  const url = buildYouTubePlayUrl(videoId)
   const ok = openUrlSmart(url)
   recordRecentApp('youtube')
   return {

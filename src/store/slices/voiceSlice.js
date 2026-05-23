@@ -229,7 +229,16 @@ export const processVoiceCommand = createAsyncThunk(
 
       const fallback = basicIntent(command)
       const intent = aiData?.intent || fallback?.intent || messaging?.intent || 'help'
-      const merged = { ...fallback, ...messaging, ...aiData, intent }
+      let merged = { ...fallback, ...messaging, ...aiData, intent }
+      const mediaBoost = parseMediaCommand(command)
+      if (mediaBoost?.searchQuery) {
+        merged = {
+          ...merged,
+          intent: 'open_app',
+          appName: mediaBoost.appName || merged.appName || 'youtube',
+          searchQuery: merged.searchQuery || mediaBoost.searchQuery,
+        }
+      }
 
       if (provider === 'keyword' && !fallback && !messaging && !utility && !SESSION_INTENTS.has(intent)) {
         return buildCommandResult(command, 'help', {

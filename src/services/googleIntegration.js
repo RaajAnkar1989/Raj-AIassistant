@@ -114,6 +114,21 @@ export async function connectGoogle() {
   })
 }
 
+const TOKEN_KEYS = ['google_access_token', 'gis_gmail_token']
+
+function readStoredTokenRaw() {
+  if (typeof window === 'undefined') return null
+  for (const key of TOKEN_KEYS) {
+    try {
+      const raw = sessionStorage.getItem(key) || localStorage.getItem(key)
+      if (raw) return raw
+    } catch {
+      /* ignore */
+    }
+  }
+  return null
+}
+
 function persistGoogleTokens(token, expiry) {
   gisGmailService.accessToken = token
   gisGmailService.tokenExpiryMs = expiry
@@ -123,14 +138,13 @@ function persistGoogleTokens(token, expiry) {
   try {
     sessionStorage.setItem('google_access_token', payload)
     sessionStorage.setItem('gis_gmail_token', payload)
+    localStorage.setItem('google_access_token', payload)
   } catch {}
 }
 
 function applyStoredToken() {
   try {
-    const raw =
-      sessionStorage.getItem('google_access_token') ||
-      sessionStorage.getItem('gis_gmail_token')
+    const raw = readStoredTokenRaw()
     if (!raw) return false
     const { token, expiry } = JSON.parse(raw)
     if (!token || Date.now() >= expiry - 30000) return false

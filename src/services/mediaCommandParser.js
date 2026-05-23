@@ -53,5 +53,16 @@ export function parseMediaCommand(command) {
     }
   }
 
+  if (
+    /^(?:jarvis,?\s+)?(?:play|start)\s+/i.test(text) &&
+    !/(email|mail|calendar|whatsapp|message|timer|joke|game|movie\s+trailer)/i.test(text)
+  ) {
+    const m = text.match(/(?:play|start)\s+(?:me\s+)?(?:the\s+)?(?:song\s+|music\s+)?(.+?)$/i)
+    const searchQuery = cleanQuery(m?.[1])
+    if (searchQuery && searchQuery.length >= 2) {
+      return { intent: 'open_app', appName: 'youtube', searchQuery }
+    }
+  }
+
   return null
 }

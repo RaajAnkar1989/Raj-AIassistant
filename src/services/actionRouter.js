@@ -2,7 +2,7 @@
  * Executes Jarvis intents — opens apps (iPhone deep links or Mac/browser).
  */
 import gisCalendarService from './gisCalendarService'
-import { summarizeInbox } from './googleIntegration'
+import { summarizeInbox, getGoogleConnectionStatus } from './googleIntegration'
 import { getWeatherByCoords } from './weatherService'
 import { recordRecentApp } from '../utils/recentApps'
 import { resolveContactByVoice } from '../services/contactResolver'
@@ -533,8 +533,11 @@ export async function executeIntent(intent, aiData, speak) {
           subject,
           body,
         })
+        const googleStatus = getGoogleConnectionStatus()
         await speak(
-          `I couldn't find an email for ${toName} in your Google contacts. Connect Google in Settings so I can look them up by voice.`
+          googleStatus.connected
+            ? `I couldn't find an email for ${toName} in your Google contacts, Boss. Say their full email address, or add them in Google Contacts.`
+            : `Connect Google in Settings first, Boss — then I can look up ${toName} and draft emails for you.`
         )
         return
       }

@@ -10,6 +10,12 @@
   external_node_modules = ["edge-tts-universal"]
 
 [[redirects]]
+  from = "/api/youtube/search"
+  to = "/.netlify/functions/youtube-search"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/tts/edge"
   to = "/.netlify/functions/edge-tts"
   status = 200
