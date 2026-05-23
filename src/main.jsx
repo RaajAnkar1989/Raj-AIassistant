@@ -14,7 +14,7 @@ import App from './App.jsx'
 import { store } from './store/store.js'
 import './index.css'
 
-const APP_SHELL_VERSION = '8-jarvis-boss'
+const APP_SHELL_VERSION = '9-boot-fix'
 
 /** Old PWA/service worker caches served the dashboard UI — clear them once. */
 async function migrateAppShell() {
@@ -63,25 +63,13 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 
 async function boot() {
-  migrateBrainSettings()
-  resolveBrainConfig({ persist: !isBrainUserLocked() })
-  if (getBrainProvider() !== 'openai') clearQuotaExceededCache()
-  void restoreVoiceTimers()
-
-  if (import.meta.env.DEV || import.meta.env.VITE_OLLAMA_ENABLED === '1' || import.meta.env.VITE_OLLAMA_ENABLED === 'true') {
-    try {
-      await syncOllamaFromLocal()
-    } catch {
-      // Ollama/tunnel may start after the app — run: ollama serve && npm run tunnel:ollama
-    }
-  }
-
-  if (import.meta.env.DEV) {
-    try {
-      await syncFreeLLMAPIFromLocal()
-    } catch {
-      // Local dev may start before FreeLLMAPI is up.
-    }
+  try {
+    migrateBrainSettings()
+    resolveBrainConfig({ persist: !isBrainUserLocked() })
+    if (getBrainProvider() !== 'openai') clearQuotaExceededCache()
+    void restoreVoiceTimers()
+  } catch (e) {
+    console.warn('[Raj] boot setup failed:', e)
   }
 
   const ok = await migrateAppShell()
@@ -107,6 +95,22 @@ async function boot() {
       </ThemeProvider>
     </Provider>
   )
+
+  // Never block first paint on local Ollama / FreeLLMAPI probes (Netlify can hang 20s+).
+  if (import.meta.env.DEV || import.meta.env.VITE_OLLAMA_ENABLED === '1' || import.meta.env.VITE_OLLAMA_ENABLED === 'true') {
+    void syncOllamaFromLocal().catch(() => {})
+  }
+
+  if (import.meta.env.DEV) {
+    void syncFreeLLMAPIFromLocal().catch(() => {})
+  }
 }
 
-boot()
+boot().catch((e) => {
+  console.error('[Raj] fatal boot error:', e)
+  const root = document.getElementById('root')
+  if (root) {
+    root.innerHTML =
+      '<div style="color:#e0f2fe;font-family:system-ui;padding:24px;text-align:center">Raj failed to start. Pull down to refresh or clear site data in browser settings.</div>'
+  }
+})

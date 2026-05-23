@@ -40,7 +40,9 @@ export async function syncOllamaFromLocal({ force = false } = {}) {
   }
 
   try {
-    const res = await fetch('/api/brain/ollama/api/tags')
+    const res = await fetch('/api/brain/ollama/api/tags', {
+      signal: AbortSignal.timeout(4500),
+    })
     if (!res.ok) throw new Error('Ollama not reachable')
     const data = await res.json()
     const models = (data.models || []).map((m) => m.name).filter(Boolean)
