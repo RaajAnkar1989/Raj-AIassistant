@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Box, Typography, IconButton, Collapse, Fade } from '@mui/material'
 import { Settings, MicNone, CallEnd } from '@mui/icons-material'
+import JarvisSettingsPanel from './JarvisSettingsPanel'
 import {
   setListening,
   setTranscript,
