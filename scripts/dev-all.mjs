@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** One command: Raj app + Chatterbox voice + Ollama brain (local). FreeLLMAPI optional fallback. */
 import { spawn } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureFreeLLMAPI, hasChatterbox, hasFreeLLMAPI } from './ensure-local-services.mjs'
@@ -15,6 +16,22 @@ const CHATTERBOX_SERVER = path.join(ROOT, 'scripts/chatterbox_server.py')
 const children = []
 let shuttingDown = false
 let freellmapiBaseUrl = process.env.FREELLMAPI_URL || 'http://127.0.0.1:3001'
+
+function loadEnvLocal() {
+  const file = path.join(ROOT, '.env.local')
+  if (!existsSync(file)) return {}
+  const out = {}
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const i = trimmed.indexOf('=')
+    if (i === -1) continue
+    out[trimmed.slice(0, i).trim()] = trimmed.slice(i + 1).trim()
+  }
+  return out
+}
+
+const localEnv = loadEnvLocal()
 
 function log(label, message) {
   console.log(`[${label}] ${message}`)
@@ -49,7 +66,7 @@ function spawnService(label, command, args, options = {}) {
     label,
     spawn(command, args, {
       cwd: options.cwd || ROOT,
-      env: { ...process.env, FREELLMAPI_URL: freellmapiBaseUrl, ...options.env },
+      env: { ...process.env, ...localEnv, FREELLMAPI_URL: freellmapiBaseUrl, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     }),
   )
@@ -88,6 +105,9 @@ async function main() {
   console.log('  App (UI):     https://localhost:3002')
   console.log('  Voice API:    http://127.0.0.1:8765  (Chatterbox)')
   console.log('  Memory API:   http://127.0.0.1:8766  (data/raj-memory/)')
+  console.log('  Agent WS:     ws://127.0.0.1:8787/ws/agent  (streaming LLM + TTS)')
+  console.log('  Whisper STT:  ws://127.0.0.1:8768/ws/stt   (whisper.cpp local)')
+  console.log('  Piper TTS:    http://127.0.0.1:8769          (offline voice)')
   if (ollama.running) {
     console.log(`  Brain (AI):   Ollama · ${ollama.model} · ${ollama.models.length} model(s)`)
     console.log('  Phone/Netlify: npm run tunnel:ollama  →  npm run sync:ollama-netlify')
@@ -113,6 +133,9 @@ async function main() {
     }
 
     spawnService('memory', process.execPath, [path.join(ROOT, 'scripts/memory-server.mjs')])
+    spawnService('agent', process.execPath, [path.join(ROOT, 'server/index.mjs')])
+    spawnService('whisper', process.execPath, [path.join(ROOT, 'scripts/whisper_server.mjs')])
+    spawnService('piper', process.execPath, [path.join(ROOT, 'scripts/piper_server.mjs')])
 
     const alreadyRunning = await isFreeLLMAPIRunning(brainPort)
     if (alreadyRunning) {

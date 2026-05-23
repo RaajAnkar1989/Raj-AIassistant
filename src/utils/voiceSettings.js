@@ -65,7 +65,7 @@ export function resolveWorkingEngine(requested, pro) {
   }
 
   if (want === 'auto' && import.meta.env.DEV) {
-    return tryEngine('chatterbox') || tryEngine('edge') || 'web-speech'
+    return tryEngine('edge') || tryEngine('chatterbox') || 'web-speech'
   }
 
   if (want === 'auto' && !import.meta.env.DEV) {
@@ -124,8 +124,8 @@ export function migrateVoiceSettings() {
   let changed = false
 
   if (import.meta.env.DEV && getVoiceBackend() === 'free') {
-    if (!pro.ttsEngine || pro.ttsEngine === 'auto' || pro.ttsEngine === 'edge' || pro.ttsEngine === 'web-speech') {
-      pro.ttsEngine = 'chatterbox'
+    if (!pro.ttsEngine || pro.ttsEngine === 'auto' || pro.ttsEngine === 'chatterbox' || pro.ttsEngine === 'web-speech') {
+      pro.ttsEngine = 'edge'
       changed = true
     }
   }

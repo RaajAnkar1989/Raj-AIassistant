@@ -31,9 +31,12 @@ import {
 import { hasBrainReady, getActiveProviderInfo, getBrainProvider, migrateBrainSettings } from '../constants/aiProviders'
 import {
   shouldUseWhisperStt,
+  shouldUseWhisperCppStt,
+  resolveSttEngine,
   getVoiceInputLabel,
   getPhoneSetupHint,
 } from '../utils/voiceInputMode'
+import { startWhisperCppClipLoop } from '../services/whisperCppService'
 import { startWhisperListenLoop } from '../services/whisperService'
 import { formatBrainError, isOpenAIQuotaError, isQuotaExceededCached, clearQuotaExceededCache } from '../utils/openaiErrors'
 import {
@@ -57,6 +60,9 @@ import {
   getWakeConfig,
   stripWakeWord,
 } from '../utils/wakeWord'
+import { useJarvisAgent, JARVIS_STATES } from '../hooks/useJarvisAgent'
+import { isAgentModePreferred, setAgentModePreferred, probeAgentServer } from '../services/jarvisAgentClient'
+import { streamingVoiceQueue } from '../services/streamingVoiceService'
 import toast from 'react-hot-toast'
 
 function containsWakeWordForAccept(text) {
@@ -92,8 +98,9 @@ const FreeAssistantHome = () => {
   const resumeTimerRef = useRef(null)
   const engagedUntilRef = useRef(0)
   const [sessionStartedAt, setSessionStartedAt] = useState(null)
-  const [sttMode, setSttMode] = useState(() => (shouldUseWhisperStt() ? 'whisper' : 'webspeech'))
+  const [sttMode, setSttMode] = useState('webspeech')
   const [brainInfo, setBrainInfo] = useState(() => getActiveProviderInfo())
+  const useWhisperCpp = sttMode === 'whisper_cpp'
   const useWhisper = sttMode === 'whisper'
   const brainReady = hasBrainReady()
   const openaiQuotaLimited = brainInfo.id === 'openai' && isQuotaExceededCached()
@@ -104,15 +111,90 @@ const FreeAssistantHome = () => {
   const transcript = useSelector((s) => s.voice.transcript)
   const voiceSettings = useSelector((s) => s.voice.settings)
   const voiceError = useSelector(selectVoiceError)
-  const googleStatus = getGoogleConnectionStatus()
-  const showGoogleHint = isGoogleConfigured() && !googleStatus.connected
+  const [agentStreaming, setAgentStreaming] = useState(() => isAgentModePreferred())
+  const [agentServerOk, setAgentServerOk] = useState(false)
 
-  const isLive = sessionActive && (isListening || isProcessing || isSpeaking)
-  const mode = isSpeaking ? 'speaking' : isProcessing ? 'thinking' : isListening ? 'listening' : 'idle'
+  const handleAgentIntent = useCallback(async (intentData, meta) => {
+    if (meta?.reactStep !== undefined && !meta?.final) return
+    if (!intentData?.intent) return
+    const intent = intentData.intent
+    if (intent === 'general_chat' && meta?.final) return
+    await executeIntent(intent, intentData, async (line) => {
+      if (intent === 'general_chat') return
+      if (line?.trim()) streamingVoiceQueue.enqueue(line)
+    })
+  }, [])
+
+  const handleReactStep = useCallback(async (intentData) => {
+    if (!intentData?.intent) return 'skipped'
+    let result = 'Done, Boss.'
+    await executeIntent(intentData.intent, intentData, async (line) => {
+      if (line?.trim()) {
+        result = line
+        streamingVoiceQueue.enqueue(line)
+      }
+    })
+    return result
+  }, [])
+
+  const {
+    agentState,
+    streamText,
+    agentOnline,
+    routeInfo,
+    reactInfo,
+    sendMessage: sendAgentMessage,
+    cancel: cancelAgent,
+  } = useJarvisAgent({
+    onIntent: handleAgentIntent,
+    onReactStep: handleReactStep,
+    onError: (msg) => {
+      if (msg?.trim()) toast.error(msg, { duration: 4000 })
+    },
+  })
+
+  useEffect(() => {
+    probeAgentServer().then((info) => setAgentServerOk(Boolean(info.ok)))
+  }, [sessionActive])
+
+  useEffect(() => {
+    if (!sessionActive) return
+    resolveSttEngine().then((engine) => {
+      if (engine && engine !== 'none') setSttMode(engine)
+    })
+  }, [sessionActive])
 
   useEffect(() => {
     sessionActiveRef.current = sessionActive
   }, [sessionActive])
+
+  const useStreamingAgent = agentStreaming && agentServerOk && agentOnline
+
+  const googleStatus = getGoogleConnectionStatus()
+  const showGoogleHint = isGoogleConfigured() && !googleStatus.connected
+
+  const hudMode = useStreamingAgent
+    ? agentState === JARVIS_STATES.SPEAKING
+      ? 'speaking'
+      : agentState === JARVIS_STATES.THINKING
+        ? 'thinking'
+        : agentState === JARVIS_STATES.LISTENING
+          ? 'listening'
+          : isListening
+            ? 'listening'
+            : 'idle'
+    : isSpeaking
+      ? 'speaking'
+      : isProcessing
+        ? 'thinking'
+        : isListening
+          ? 'listening'
+          : 'idle'
+
+  const isLive =
+    sessionActive &&
+    (isListening || isProcessing || isSpeaking || (useStreamingAgent && agentState !== JARVIS_STATES.IDLE))
+  const mode = hudMode
 
   useEffect(() => {
     if (!voiceError) return
@@ -172,6 +254,19 @@ const FreeAssistantHome = () => {
     },
     [clearResumeTimer, startRecognition]
   )
+
+  useEffect(() => {
+    streamingVoiceQueue.onStart = () => {
+      speakingRef.current = true
+      dispatch(setSpeaking(true))
+    }
+    streamingVoiceQueue.onEnd = () => {
+      speakingRef.current = false
+      dispatch(setSpeaking(false))
+      processingRef.current = false
+      scheduleResumeListening(200)
+    }
+  }, [dispatch, scheduleResumeListening])
 
   const stopRecognition = useCallback(() => {
     clearResumeTimer()
@@ -373,6 +468,12 @@ const FreeAssistantHome = () => {
       dispatch(setTranscript(''))
 
       try {
+        if (useStreamingAgent) {
+          dispatch(setListening(false))
+          await sendAgentMessage(command)
+          return
+        }
+
         const result = await dispatch(processVoiceCommand(command)).unwrap()
         if (cmdGen !== commandGenerationRef.current) return
 
@@ -390,12 +491,14 @@ const FreeAssistantHome = () => {
         }
       } finally {
         if (cmdGen === commandGenerationRef.current) {
-          processingRef.current = false
-          if (!speakingRef.current) scheduleResumeListening(200)
+          if (!useStreamingAgent) {
+            processingRef.current = false
+            if (!speakingRef.current) scheduleResumeListening(200)
+          }
         }
       }
     },
-    [dispatch, speak, shouldAcceptCommand, scheduleResumeListening]
+    [dispatch, speak, shouldAcceptCommand, scheduleResumeListening, useStreamingAgent, sendAgentMessage]
   )
 
   const handleCommandRef = useRef(handleCommand)
@@ -429,6 +532,43 @@ const FreeAssistantHome = () => {
 
   useEffect(() => {
     if (!sessionActive) return undefined
+
+    if (useWhisperCpp) {
+      const stream = getActiveMicStream()
+      if (!stream) {
+        toast.error('Microphone not ready. Tap mic again and allow access.')
+        setSessionActive(false)
+        return undefined
+      }
+
+      whisperStopRef.current = startWhisperCppClipLoop({
+        stream,
+        shouldContinue: () => sessionActiveRef.current,
+        isPaused: () =>
+          speakingRef.current ||
+          processingRef.current ||
+          Date.now() < echoGuardUntilRef.current,
+        onTranscript: (text) => {
+          handleIncomingSpeech(text, { isFinal: true })
+        },
+        onListeningChange: (on) => dispatch(setListening(on)),
+        onError: (e) => {
+          if (!sessionActiveRef.current) return
+          const now = Date.now()
+          if (now - lastSpeechErrorRef.current < 4000) return
+          lastSpeechErrorRef.current = now
+          toast.error(e?.message || 'whisper.cpp STT failed', { duration: 7000 })
+          setSttMode('webspeech')
+        },
+        clipMs: 2200,
+      })
+
+      return () => {
+        whisperStopRef.current?.()
+        whisperStopRef.current = null
+        dispatch(setListening(false))
+      }
+    }
 
     if (useWhisper) {
       const stream = getActiveMicStream()
@@ -553,6 +693,7 @@ const FreeAssistantHome = () => {
     dispatch,
     showSpeechError,
     useWhisper,
+    useWhisperCpp,
     sttMode,
     clearResumeTimer,
     scheduleResumeListening,
@@ -684,14 +825,18 @@ const FreeAssistantHome = () => {
           JARVIS
         </Typography>
         <Typography className="jarvis-tagline">
-          {brainReady ? `${brainInfo.label} · calls you Boss · say Jarvis` : 'Add brain key in Settings'}
+          {useStreamingAgent
+            ? `Streaming · ${routeInfo?.mode || 'agent'}${reactInfo ? ` · step ${reactInfo.step + 1}` : ''}`
+            : brainReady
+              ? `${brainInfo.label} · calls you Boss · say Jarvis`
+              : 'Add brain key in Settings'}
         </Typography>
 
         <Box className="jarvis-orb-container">
           <span className={`jarvis-ring jarvis-ring--1 ${isLive ? 'is-active' : ''}`} />
           <span className={`jarvis-ring jarvis-ring--2 ${isLive ? 'is-active' : ''}`} />
           <span className={`jarvis-ring jarvis-ring--3 ${isLive ? 'is-active' : ''}`} />
-          <Box className={`jarvis-core ${isLive ? `jarvis-core--${mode === 'thinking' ? 'listening' : mode}` : ''}`}>
+          <Box className={`jarvis-core ${isLive ? `jarvis-core--${mode}` : ''}`}>
             <Box className="jarvis-visualizer">
               {levels.map((h, i) => (
                 <span key={i} className="jarvis-bar" style={{ transform: `scaleY(${isLive ? h : 0.2})` }} />
@@ -706,6 +851,14 @@ const FreeAssistantHome = () => {
           <Fade in>
             <Typography className="jarvis-transcript-user" sx={{ mt: 1, px: 2, textAlign: 'center' }}>
               You — {transcript}
+            </Typography>
+          </Fade>
+        </Collapse>
+
+        <Collapse in={Boolean(streamText) && sessionActive && useStreamingAgent}>
+          <Fade in>
+            <Typography className="jarvis-stream-response" sx={{ mt: 1.5, px: 2, textAlign: 'center' }}>
+              {streamText}
             </Typography>
           </Fade>
         </Collapse>
@@ -728,7 +881,16 @@ const FreeAssistantHome = () => {
         </Typography>
       </Box>
 
-      <JarvisSettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <JarvisSettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        agentStreaming={agentStreaming}
+        onAgentStreamingChange={(v) => {
+          setAgentStreaming(v)
+          setAgentModePreferred(v)
+        }}
+        agentServerOk={agentServerOk}
+      />
     </Box>
   )
 }

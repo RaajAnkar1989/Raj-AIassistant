@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
+import { jarvisAgentPlugin } from './vite-plugins/jarvisAgentPlugin.js'
 import { edgeTtsPlugin } from './vite-plugins/edgeTtsPlugin.js'
 import { chatterboxTtsPlugin } from './vite-plugins/chatterboxTtsPlugin.js'
 import { freellmapiBrainPlugin } from './vite-plugins/freellmapiBrainPlugin.js'
@@ -12,7 +13,7 @@ import { geminiBrainPlugin } from './vite-plugins/geminiBrainPlugin.js'
 export default defineConfig(({ command }) => {
   const devPlugins =
     command === 'serve'
-      ? [basicSsl(), edgeTtsPlugin(), chatterboxTtsPlugin(), freellmapiBrainPlugin(), ollamaBrainPlugin(), memoryPlugin(), geminiBrainPlugin()]
+      ? [basicSsl(), jarvisAgentPlugin(), edgeTtsPlugin(), chatterboxTtsPlugin(), freellmapiBrainPlugin(), ollamaBrainPlugin(), memoryPlugin(), geminiBrainPlugin()]
       : []
 
   return {

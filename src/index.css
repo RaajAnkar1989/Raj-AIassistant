@@ -191,6 +191,22 @@ body {
   animation: jarvis-core-breathe 1.2s ease-in-out infinite;
 }
 
+.jarvis-stream-response {
+  font-size: 0.82rem !important;
+  line-height: 1.55 !important;
+  color: rgba(224, 242, 254, 0.88) !important;
+  letter-spacing: 0.02em;
+  max-width: 420px;
+  text-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+}
+
+.jarvis-core--thinking {
+  border-color: rgba(250, 204, 21, 0.65) !important;
+  box-shadow:
+    0 0 45px rgba(250, 204, 21, 0.25),
+    inset 0 0 30px rgba(250, 204, 21, 0.08);
+}
+
 .jarvis-core--listening {
   border-color: rgba(34, 211, 238, 0.7);
   box-shadow:

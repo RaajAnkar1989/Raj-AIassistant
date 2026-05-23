@@ -1,6 +1,10 @@
 # Local tool clones (installed via npm run setup:local)
 tools/chatterbox/
 tools/freellmapi/
+tools/piper/*.onnx
+tools/piper/*.tar.gz
+tools/piper/piper/
+tools/whisper.cpp/models/
 
 # Dependencies
 node_modules/
@@ -23,7 +27,9 @@ build/
 .env.local
 .env.netlify
 .ollama-tunnel-url
+.agent-tunnel-url
 .raj-memory-tunnel-url
+.tmp/
 data/raj-memory/*.json
 .env.development.local
 .env.test.local

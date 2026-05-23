@@ -49,10 +49,11 @@ import { syncFreeLLMAPIFromLocal } from '../services/freellmapiSync'
 import { syncOllamaFromLocal, getCachedOllamaModels } from '../services/ollamaSync'
 import { clearQuotaExceededCache, isQuotaExceededCached } from '../utils/openaiErrors'
 import { DEFAULT_FREE_VOICE, FREE_NEURAL_VOICES } from '../constants/freeVoices'
+import { setAgentModePreferred } from '../services/jarvisAgentClient'
 import { loadVoicePro, saveVoicePro } from '../utils/voiceSettings'
 import toast from 'react-hot-toast'
 
-const JarvisSettingsPanel = ({ open, onClose }) => {
+const JarvisSettingsPanel = ({ open, onClose, agentStreaming, onAgentStreamingChange, agentServerOk }) => {
   const dispatch = useDispatch()
   const voiceSettings = useSelector((s) => s.voice.settings)
   const [elevenKey, setElevenKey] = useState('')
@@ -76,6 +77,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
   const [oauthOrigins, setOauthOrigins] = useState([])
   const [ttsEngine, setTtsEngine] = useState('auto')
   const [neuralVoice, setNeuralVoice] = useState(DEFAULT_FREE_VOICE)
+  const [sttEngineChoice, setSttEngineChoice] = useState('whisper_cpp')
 
   const refreshGoogleStatus = () => setGoogleStatus(getGoogleConnectionStatus())
 
@@ -97,6 +99,7 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
     const pro = loadVoicePro()
     setTtsEngine(pro.ttsEngine || 'auto')
     setNeuralVoice(pro.azure?.voiceName || DEFAULT_FREE_VOICE)
+    setSttEngineChoice(localStorage.getItem('jarvis_stt_engine') || 'whisper_cpp')
 
     if (import.meta.env.DEV) {
       syncOllamaFromLocal()
@@ -327,6 +330,41 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
 
         {voiceBackend === 'free' && (
           <Box sx={{ mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={Boolean(agentStreaming)}
+                  onChange={(e) => onAgentStreamingChange?.(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ color: '#94a3b8' }}>
+                  Streaming agent (local Mac) — WebSocket + Ollama token stream
+                </Typography>
+              }
+              sx={{ mb: 1.5, alignItems: 'flex-start' }}
+            />
+            <Typography variant="caption" sx={{ color: agentServerOk ? '#22d3ee' : '#64748b', display: 'block', mb: 1.5 }}>
+              {agentServerOk
+                ? 'Agent server online on :8787 — ReAct multi-step + Piper TTS + whisper.cpp STT'
+                : 'Start with npm run dev. Phone: npm run tunnel:agent → sync:agent-netlify'}
+            </Typography>
+            <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+              <InputLabel sx={{ color: '#64748b' }}>Speech input (STT)</InputLabel>
+              <Select
+                value={sttEngineChoice}
+                label="Speech input (STT)"
+                onChange={(e) => {
+                  setSttEngineChoice(e.target.value)
+                  localStorage.setItem('jarvis_stt_engine', e.target.value)
+                }}
+                sx={{ color: '#e2e8f0', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1e3a5f' } }}
+              >
+                <MenuItem value="whisper_cpp">whisper.cpp (local Mac — lower latency)</MenuItem>
+                <MenuItem value="webspeech">Browser speech (iPhone fallback)</MenuItem>
+              </Select>
+            </FormControl>
             <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
               <InputLabel sx={{ color: '#64748b' }}>Speech engine</InputLabel>
               <Select
@@ -335,9 +373,9 @@ const JarvisSettingsPanel = ({ open, onClose }) => {
                 onChange={(e) => setTtsEngine(e.target.value)}
                 sx={{ color: '#e2e8f0', '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1e3a5f' } }}
               >
-                <MenuItem value="auto">Auto (Chatterbox → Edge neural)</MenuItem>
+                <MenuItem value="auto">Auto (Edge neural Ryan → Chatterbox)</MenuItem>
                 <MenuItem value="chatterbox">Chatterbox (local clone voice)</MenuItem>
-                <MenuItem value="edge">Edge neural (fast)</MenuItem>
+                <MenuItem value="edge">Edge neural — Ryan (Jarvis, recommended)</MenuItem>
               </Select>
             </FormControl>
             {(ttsEngine === 'edge' || ttsEngine === 'auto') && (

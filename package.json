@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "node scripts/dev-all.mjs",
     "dev:app": "vite",
-    "setup:local": "node scripts/ensure-local-services.mjs",
+    "agent": "node server/index.mjs",
+    "whisper": "node scripts/whisper_server.mjs",
+    "piper": "node scripts/piper_server.mjs",
+    "tunnel:agent": "node scripts/tunnel-agent.mjs",
+    "sync:agent-netlify": "node scripts/sync-agent-netlify.mjs",
+    "setup:voice": "node scripts/setup-voice-stack.mjs",
     "chatterbox": "bash scripts/start-chatterbox.sh",
     "freellmapi": "bash scripts/start-freellmapi.sh",
     "sync:netlify-env": "node scripts/sync-netlify-env.mjs",
@@ -31,7 +36,8 @@
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.0",
     "react-redux": "^8.0.5",
-    "react-router-dom": "^6.8.1"
+    "react-router-dom": "^6.8.1",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/react": "^18.0.27",

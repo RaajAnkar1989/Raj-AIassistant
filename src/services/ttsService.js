@@ -499,7 +499,7 @@ class TtsService {
 
     if (freeMode) {
       if (import.meta.env.DEV) {
-        chain = ['chatterbox', 'edge', 'web-speech']
+        chain = ['edge', 'chatterbox', 'web-speech']
       } else {
         chain = ['edge', 'web-speech']
       }
